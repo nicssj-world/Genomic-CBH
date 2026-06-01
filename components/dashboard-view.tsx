@@ -100,14 +100,14 @@ export function DashboardView({ initialData }: { initialData: DashboardData }) {
       <Card>
         <div className="flex flex-col gap-3 border-b border-[#e0e9ea] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div><h2 className="font-bold text-[#173d50]">รายการรับเข้าล่าสุด</h2><p className="mt-0.5 text-xs text-[#80959b]">ตรวจสอบ LN, LN Halos และสถานะล่าสุด</p></div>
-          <div className="flex flex-wrap gap-2">
-            <Select className="w-auto py-1.5 text-xs" value={stage} onChange={(event) => setStage(event.target.value as SampleStage | 'all')}>
+          <div className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 sm:w-auto sm:grid-cols-[auto_auto_auto]">
+            <Select className="min-w-0 !w-full py-1.5 text-xs sm:!w-auto" value={stage} onChange={(event) => setStage(event.target.value as SampleStage | 'all')}>
               <option value="all">ทุกขั้นตอน</option>{STAGES.map((item) => <option key={item}>{item}</option>)}
             </Select>
-            <Select className="w-auto py-1.5 text-xs" value={runType} onChange={(event) => setRunType(event.target.value as RunType | 'all')}>
+            <Select className="min-w-0 !w-full py-1.5 text-xs sm:!w-auto" value={runType} onChange={(event) => setRunType(event.target.value as RunType | 'all')}>
               <option value="all">ทุก Run type</option>{RUN_TYPES.map((item) => <option key={item}>{item}</option>)}
             </Select>
-            <label className="flex items-center gap-1.5 rounded-lg border border-[#cfdee0] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#6a838b]"><input type="checkbox" checked={gaOnly} onChange={(event) => setGaOnly(event.target.checked)} /> GA warning</label>
+            <label className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#cfdee0] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#6a838b]"><input type="checkbox" checked={gaOnly} onChange={(event) => setGaOnly(event.target.checked)} /> GA warning</label>
           </div>
         </div>
         <div className="overflow-x-auto">
