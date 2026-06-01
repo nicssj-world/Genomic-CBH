@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #172c37;
+  --muted: #67808a;
+  --line: #dbe7e8;
+  --paper: #ffffff;
+  --canvas: #f5f8f7;
+  --teal: #087f79;
+  --teal-dark: #08655f;
+  --navy: #173d50;
+  --amber: #c47b16;
+  --danger: #be3d49;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: var(--canvas);
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 90% 0%, rgba(8, 127, 121, 0.08), transparent 30rem),
+    var(--canvas);
+  color: var(--ink);
+  font-family: "Noto Sans Thai", Arial, sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.mono {
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.paper {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 35px rgba(30, 67, 76, 0.055);
+}
+
+.scrollbar-thin {
+  scrollbar-color: #b9cbce transparent;
+  scrollbar-width: thin;
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+}
