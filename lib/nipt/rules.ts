@@ -72,8 +72,14 @@ export function formatRunSampleId(lnHalos: string, runType: RunType) {
 }
 
 export function formatGestationalAge(weeks: number | null, days: number | null) {
-  if (weeks === null || days === null) return '-'
+  if (weeks === null && days === null) return '-'
+  if (weeks === null) return `?W ${days}D`
+  if (days === null) return `${weeks}W ?D`
   return `${weeks}W ${days}D`
+}
+
+export function isGestationalAgeComplete(weeks: number | null, days: number | null) {
+  return (weeks === null) === (days === null)
 }
 
 export function isGestationalAgeWarning(weeks: number | null) {

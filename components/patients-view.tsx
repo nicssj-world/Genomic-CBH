@@ -1,9 +1,9 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { Download, FileClock, FileText, Search, Upload, X } from 'lucide-react'
+import { Download, FileClock, FileText, Search, Trash2, Upload, X } from 'lucide-react'
 import type { Actor, SampleRow } from '@/lib/nipt/types'
-import { RUN_TYPES, STAGES, formatGestationalAge, isGestationalAgeWarning, type RunType, type SampleStage } from '@/lib/nipt/rules'
+import { RUN_TYPES, STAGES, formatGestationalAge, isGestationalAgeComplete, isGestationalAgeWarning, type RunType, type SampleStage } from '@/lib/nipt/rules'
 import { api, Button, Card, Field, Input, Notice, PageHeader, RunBadge, Select, StageBadge } from '@/components/ui'
 
 type Revision = {
@@ -63,12 +63,12 @@ export function PatientsView({ actor, initialSamples, initialSelectedId }: { act
         </div>
         {!filtered.length ? <p className="px-4 py-10 text-center text-sm text-[#91a4a9]">ไม่พบรายการที่ค้นหา</p> : null}
       </Card>
-      {selected ? <PatientDrawer actor={actor} sample={selected} onClose={() => setSelectedId('')} onRefresh={async (message) => { await refresh(selected.id); setNotice(message) }} /> : null}
+      {selected ? <PatientDrawer actor={actor} sample={selected} onClose={() => setSelectedId('')} onDelete={async () => { await refresh(''); setNotice('ลบตัวอย่างแล้ว · LN Halos เดิมจะไม่ถูกนำกลับมาใช้ซ้ำ') }} onRefresh={async (message) => { await refresh(selected.id); setNotice(message) }} /> : null}
     </div>
   )
 }
 
-function PatientDrawer({ actor, sample, onClose, onRefresh }: { actor: Actor; sample: SampleRow; onClose: () => void; onRefresh: (message: string) => Promise<void> }) {
+function PatientDrawer({ actor, sample, onClose, onDelete, onRefresh }: { actor: Actor; sample: SampleRow; onClose: () => void; onDelete: () => Promise<void>; onRefresh: (message: string) => Promise<void> }) {
   const [gaWeeks, setGaWeeks] = useState(sample.gaWeeks?.toString() ?? '')
   const [gaDays, setGaDays] = useState(sample.gaDays?.toString() ?? '')
   const [stage, setStage] = useState<SampleStage>(sample.stage)
@@ -79,14 +79,20 @@ function PatientDrawer({ actor, sample, onClose, onRefresh }: { actor: Actor; sa
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function save() {
-    setBusy(true)
     setError('')
+    const parsedGaWeeks = gaWeeks === '' ? null : Number(gaWeeks)
+    const parsedGaDays = gaDays === '' ? null : Number(gaDays)
+    if (!isGestationalAgeComplete(parsedGaWeeks, parsedGaDays)) {
+      setError('กรุณากรอก GA Weeks และ Days ให้ครบทั้งสองช่อง หรือเว้นว่างทั้งสองช่อง')
+      return
+    }
+    setBusy(true)
     try {
       await api(`/api/samples/${sample.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          gaWeeks: gaWeeks === '' ? null : Number(gaWeeks),
-          gaDays: gaDays === '' ? null : Number(gaDays),
+          gaWeeks: parsedGaWeeks,
+          gaDays: parsedGaDays,
           stage,
           runType,
         }),
@@ -140,6 +146,20 @@ function PatientDrawer({ actor, sample, onClose, onRefresh }: { actor: Actor; sa
     await onRefresh('Void revision แล้ว')
   }
 
+  async function removeSample() {
+    if (!window.confirm(`ยืนยันการลบ LN ${sample.ln}?\nLN Halos ${sample.lnHalos} จะไม่ถูกนำกลับมาใช้ซ้ำ`)) return
+    setBusy(true)
+    setError('')
+    try {
+      await api(`/api/samples/${sample.id}`, { method: 'DELETE' })
+      await onDelete()
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'ลบตัวอย่างไม่สำเร็จ')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-30 flex justify-end bg-[#173d50]/24 backdrop-blur-[2px]" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <aside className="scrollbar-thin h-full w-full max-w-xl overflow-y-auto bg-[#fbfdfd] shadow-[-18px_0_50px_rgba(21,54,65,0.18)]">
@@ -161,8 +181,8 @@ function PatientDrawer({ actor, sample, onClose, onRefresh }: { actor: Actor; sa
           <Card className="p-4">
             <h3 className="font-bold text-[#173d50]">Workflow</h3>
             <div className="mt-3 grid grid-cols-2 gap-3">
-              <Field label="Gestational Age · Weeks"><Input type="number" min="0" max="50" value={gaWeeks} onChange={(event) => setGaWeeks(event.target.value)} placeholder="16" /></Field>
-              <Field label="Days"><Input type="number" min="0" max="6" value={gaDays} onChange={(event) => setGaDays(event.target.value)} placeholder="3" /></Field>
+              <Field label="Gestational Age · Weeks"><Input type="number" min="0" max="50" value={gaWeeks} onChange={(event) => setGaWeeks(event.target.value)} /></Field>
+              <Field label="Days" hint="กรอก 0 หากไม่มีเศษวัน"><Input type="number" min="0" max="6" value={gaDays} onChange={(event) => setGaDays(event.target.value)} /></Field>
               <Field label="Run type"><Select value={runType} onChange={(event) => setRunType(event.target.value as RunType)}>{RUN_TYPES.map((item) => <option key={item}>{item}</option>)}</Select></Field>
               <Field label="Stage"><Select value={stage} onChange={(event) => setStage(event.target.value as SampleStage)}>{STAGES.map((item) => <option key={item}>{item}</option>)}</Select></Field>
             </div>
@@ -178,6 +198,7 @@ function PatientDrawer({ actor, sample, onClose, onRefresh }: { actor: Actor; sa
             {actor.role === 'Admin' ? <Button variant="ghost" className="mt-1 w-full" onClick={loadHistory}><FileClock className="size-4" /> ดู revision history</Button> : null}
             {revisions ? <div className="mt-3 space-y-2">{revisions.map((revision) => <div key={revision.id} className="rounded-lg border border-[#e0e9ea] p-2.5 text-xs"><div className="flex items-start justify-between gap-2"><div><p className="font-bold text-[#526e77]">Rev {revision.revisionNumber} · {revision.fileName}</p><p className="mt-1 text-[11px] text-[#92a4a9]">{revision.uploadedByName ?? '-'} · {formatDateTime(revision.uploadedAt)}</p></div>{revision.isActive ? <span className="rounded bg-[#eef8ef] px-1.5 py-0.5 text-[10px] font-bold text-[#528057]">ACTIVE</span> : <span className="rounded bg-[#f4f4f4] px-1.5 py-0.5 text-[10px] font-bold text-[#909090]">VOID</span>}</div><div className="mt-2 flex gap-1"><Button variant="ghost" className="px-2 py-1 text-[11px]" onClick={() => download(revision.id)}>ดาวน์โหลด</Button>{revision.isActive ? <Button variant="danger" className="px-2 py-1 text-[11px]" onClick={() => voidRevision(revision.id)}>Void</Button> : null}</div></div>)}</div> : null}
           </Card>
+          {actor.role === 'Admin' ? <Card className="border-[#edc7cb] bg-[#fffafa] p-4"><h3 className="font-bold text-[#a83541]">ลบตัวอย่าง</h3><p className="mt-1 text-xs leading-5 text-[#9b6a70]">ใช้สำหรับรายการที่สร้างผิดก่อนเริ่ม workflow เท่านั้น ระบบจะไม่ใช้ LN Halos เดิมซ้ำอีก</p><Button disabled={busy} variant="danger" className="mt-3 w-full" onClick={removeSample}><Trash2 className="size-4" /> ลบตัวอย่างนี้</Button></Card> : null}
         </div>
       </aside>
     </div>

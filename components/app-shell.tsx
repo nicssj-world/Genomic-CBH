@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Activity, Archive, ClipboardList, Database, FileUp, FlaskConical, LogOut, Microscope, ShieldCheck, Users } from 'lucide-react'
+import { Activity, Archive, ClipboardList, Database, FileUp, FlaskConical, LogOut, Microscope, PackageSearch, ShieldCheck, Users } from 'lucide-react'
 import type { Actor } from '@/lib/nipt/types'
 import { api } from '@/components/ui'
 
@@ -12,6 +12,7 @@ const mainNav = [
   { href: '/task-lists', label: 'Task Lists', icon: ClipboardList },
   { href: '/qc-measurements', label: 'QC Measurements', icon: Microscope },
   { href: '/sample-storage', label: 'Sample Storage', icon: Archive },
+  { href: '/stock', label: 'Stock', icon: PackageSearch },
   { href: '/his-imports', label: 'HIS Imports', icon: FileUp },
 ]
 

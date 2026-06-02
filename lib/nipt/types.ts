@@ -1,4 +1,5 @@
 import type { ControlType, RunType, SampleStage } from '@/lib/nipt/rules'
+import type { StockExpiryState } from '@/lib/nipt/stock-rules'
 
 export type UserRole = 'Admin' | 'CBH-Staff'
 
@@ -162,4 +163,73 @@ export interface QcSheet {
 
 export interface QcWorkspace {
   sheets: QcSheet[]
+}
+
+export type StockMovementType = 'receive' | 'issue' | 'adjustment' | 'reversal'
+
+export interface StockCategory {
+  id: string
+  name: string
+  isActive: boolean
+}
+
+export interface StockLot {
+  id: string
+  itemId: string
+  lotNumber: string
+  expiryDate: string | null
+  expiryState: StockExpiryState
+  onHand: number
+  usable: number
+  createdAt: string
+}
+
+export interface StockItem {
+  id: string
+  itemCode: string
+  name: string
+  categoryId: string
+  categoryName: string
+  unit: string
+  minimumStock: number
+  trackLot: boolean
+  trackExpiry: boolean
+  isActive: boolean
+  onHand: number
+  usable: number
+  isLowStock: boolean
+  lots: StockLot[]
+}
+
+export interface StockMovement {
+  id: string
+  itemId: string
+  itemCode: string
+  itemName: string
+  unit: string
+  lotId: string
+  lotNumber: string
+  movementType: StockMovementType
+  quantity: number
+  supplier: string | null
+  reference: string | null
+  note: string | null
+  overrideReason: string | null
+  expiredConfirmed: boolean
+  sourceMovementId: string | null
+  reversedByMovementId: string | null
+  createdBy: string
+  createdByName: string | null
+  createdAt: string
+  canReverse: boolean
+}
+
+export interface StockWorkspace {
+  categories: StockCategory[]
+  items: StockItem[]
+  movements: StockMovement[]
+  activeItemCount: number
+  lowStockItemCount: number
+  expiringLotCount: number
+  expiredLotCount: number
 }

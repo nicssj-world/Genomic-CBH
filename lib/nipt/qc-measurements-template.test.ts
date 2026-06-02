@@ -87,13 +87,13 @@ function qcSheet(): QcSheet {
 }
 
 describe('QC Measurements workbook template payload', () => {
-  it('maps the original 48 Task List slots and keeps fixed control codes', () => {
+  it('maps the original 48 Task List slots and keeps the fixed -1 control suffix', () => {
     const payload = buildQcMeasurementsTemplatePayload(batch(), qcSheet())
 
     expect(payload.sourceRows).toHaveLength(48)
-    expect(payload.sourceRows[0]).toEqual({ sourceRow: 3, lnHalos: '26N120260601', printedSampleId: '26N120260601' })
-    expect(payload.sourceRows[24]).toEqual({ sourceRow: 27, lnHalos: '26N220260602', printedSampleId: '26N220260602' })
-    expect(payload.sourceRows[39]).toEqual({ sourceRow: 42, lnHalos: '26N320260603', printedSampleId: '26N320260603' })
+    expect(payload.sourceRows[0]).toEqual({ sourceRow: 3, lnHalos: '26N120260601', printedSampleId: '26N120260601-1' })
+    expect(payload.sourceRows[24]).toEqual({ sourceRow: 27, lnHalos: '26N220260602', printedSampleId: '26N220260602-1' })
+    expect(payload.sourceRows[39]).toEqual({ sourceRow: 42, lnHalos: '26N320260603', printedSampleId: '26N320260603-1' })
   })
 
   it('fills only the QC metadata and concentration row addresses required by the approved sheet', () => {

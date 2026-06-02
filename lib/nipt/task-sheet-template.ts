@@ -54,7 +54,7 @@ export function buildTaskSheetSourceRows(batch: BatchDetail): TaskSheetTemplateP
       return {
         sourceRow: slot.slotNumber + 2,
         lnHalos: controlCode || slot.sample?.lnHalos || '',
-        printedSampleId: controlCode || slot.sample?.runSampleId || '',
+        printedSampleId: controlCode ? `${controlCode}-1` : slot.sample?.runSampleId || '',
       }
     })
 }

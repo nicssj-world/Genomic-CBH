@@ -65,13 +65,13 @@ function batch(): BatchDetail {
 }
 
 describe('Task List workbook template payload', () => {
-  it('maps 48 slots into the source sheet rows without changing the control code format', () => {
+  it('maps 48 slots into the source sheet rows and gives controls their fixed -1 suffix', () => {
     const payload = buildTaskSheetTemplatePayload(batch(), 1)
 
     expect(payload.sourceRows).toHaveLength(48)
-    expect(payload.sourceRows[0]).toEqual({ sourceRow: 3, lnHalos: '26N120260601', printedSampleId: '26N120260601' })
-    expect(payload.sourceRows[24]).toEqual({ sourceRow: 27, lnHalos: '26N220260602', printedSampleId: '26N220260602' })
-    expect(payload.sourceRows[39]).toEqual({ sourceRow: 42, lnHalos: '26N320260603', printedSampleId: '26N320260603' })
+    expect(payload.sourceRows[0]).toEqual({ sourceRow: 3, lnHalos: '26N120260601', printedSampleId: '26N120260601-1' })
+    expect(payload.sourceRows[24]).toEqual({ sourceRow: 27, lnHalos: '26N220260602', printedSampleId: '26N220260602-1' })
+    expect(payload.sourceRows[39]).toEqual({ sourceRow: 42, lnHalos: '26N320260603', printedSampleId: '26N320260603-1' })
     expect(payload.sourceRows[1]).toEqual({
       sourceRow: 4,
       lnHalos: '26B260601002',
@@ -94,5 +94,17 @@ describe('Task List workbook template payload', () => {
       s1Label: 'Run001 S1-3/3',
       s2Label: 'Run001 S2-3/3',
     })
+  })
+
+  it('keeps specimen rerun suffixes independent from the fixed control suffix', () => {
+    const rerunBatch = batch()
+    const rerunSample = rerunBatch.slots[1].sample!
+    rerunSample.runType = 'Re-Library'
+    rerunSample.runSampleId = `${rerunSample.lnHalos}-2`
+
+    const payload = buildTaskSheetTemplatePayload(rerunBatch, 1)
+
+    expect(payload.sourceRows[0].printedSampleId).toBe('26N120260601-1')
+    expect(payload.sourceRows[1].printedSampleId).toBe('26B260601002-2')
   })
 })

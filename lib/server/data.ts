@@ -2,7 +2,7 @@ import 'server-only'
 
 import { randomUUID } from 'node:crypto'
 import type { Actor, BatchDetail, BatchSlot, DashboardData, QcImport, QcSheet, QcWorkspace, ResultRevision, SampleRow, SampleStorageData, StorageBox, TaskSheet, UserRole } from '@/lib/nipt/types'
-import { RUN_TYPES, STAGES, formatBangkokIsoDate, formatRunSampleId, getStorageDueState, type RunType, type SampleStage } from '@/lib/nipt/rules'
+import { RUN_TYPES, STAGES, formatBangkokIsoDate, formatRunSampleId, getStorageDueState, isGestationalAgeComplete, type RunType, type SampleStage } from '@/lib/nipt/rules'
 import { buildTaskSheetSourceRows } from '@/lib/nipt/task-sheet-template'
 import { HttpError } from '@/lib/server/errors'
 import { createDownloadUrl, createUploadUrl, getStorageObjectInfo, readStorageObject, safeFileName } from '@/lib/server/storage'
@@ -151,16 +151,21 @@ export async function updateSample(
   const admin = getAdminClient()
   const sample = await getSample(sampleId)
   if (input.gaWeeks !== undefined || input.gaDays !== undefined) {
+    const gaWeeks = input.gaWeeks === undefined ? sample.gaWeeks : input.gaWeeks
+    const gaDays = input.gaDays === undefined ? sample.gaDays : input.gaDays
+    if (!isGestationalAgeComplete(gaWeeks, gaDays)) {
+      throw new HttpError(400, 'Gestational age requires both weeks and days')
+    }
     const { error } = await admin
       .from('nipt_samples')
       .update({
-        ga_weeks: input.gaWeeks ?? null,
-        ga_days: input.gaDays ?? null,
+        ga_weeks: gaWeeks,
+        ga_days: gaDays,
         updated_at: new Date().toISOString(),
       })
       .eq('id', sampleId)
     fail(error)
-    await writeAudit(actor, 'sample.ga.update', 'sample', sampleId, { gaWeeks: input.gaWeeks, gaDays: input.gaDays })
+    await writeAudit(actor, 'sample.ga.update', 'sample', sampleId, { gaWeeks, gaDays })
   }
 
   let activeRunId = sample.runId
@@ -199,6 +204,39 @@ export async function updateSample(
     await writeAudit(actor, 'sample.stage.update', 'sample', sampleId, { from: sample.stage, to: input.stage })
   }
   return getSample(sampleId)
+}
+
+export async function deleteSample(sampleId: string, actor: Actor) {
+  if (actor.role !== 'Admin') throw new HttpError(403, 'Admin permission required')
+  const admin = getAdminClient()
+  const sample = await getSample(sampleId)
+  const { data: runData, error: runError } = await admin.from('nipt_sample_runs').select('id').eq('sample_id', sampleId)
+  fail(runError)
+  const runIds = (runData ?? []).map((run) => run.id)
+  const batchSlotQuery = runIds.length
+    ? admin.from('nipt_batch_slots').select('id', { count: 'exact', head: true }).in('sample_run_id', runIds)
+    : Promise.resolve({ count: 0, error: null })
+  const [
+    { count: batchSlotCount, error: batchSlotError },
+    { count: resultCount, error: resultError },
+    { count: storageSlotCount, error: storageSlotError },
+  ] = await Promise.all([
+    batchSlotQuery,
+    admin.from('nipt_result_revisions').select('id', { count: 'exact', head: true }).eq('sample_id', sampleId),
+    admin.from('nipt_storage_slots').select('id', { count: 'exact', head: true }).eq('sample_id', sampleId),
+  ])
+  fail(batchSlotError)
+  fail(resultError)
+  fail(storageSlotError)
+  if (batchSlotCount) throw new HttpError(409, 'ลบไม่ได้: ตัวอย่างถูกจัดลง Task List แล้ว')
+  if (resultCount) throw new HttpError(409, 'ลบไม่ได้: ตัวอย่างมี Result PDF แล้ว')
+  if (storageSlotCount) throw new HttpError(409, 'ลบไม่ได้: ตัวอย่างถูกจัดเก็บแล้ว')
+
+  // Keep nipt_daily_sequences untouched so a deleted LN Halos value stays retired.
+  const { error } = await admin.from('nipt_samples').delete().eq('id', sampleId)
+  fail(error)
+  await writeAudit(actor, 'sample.delete', 'sample', sampleId, { ln: sample.ln, lnHalos: sample.lnHalos })
+  return { id: sampleId, ln: sample.ln, lnHalos: sample.lnHalos }
 }
 
 async function mapBatch(batch: RecordRow): Promise<BatchDetail> {
@@ -703,6 +741,17 @@ export async function getSampleStorage(): Promise<SampleStorageData> {
     dueBoxCount: boxes.filter((box) => box.status === 'full' && ['due', 'overdue'].includes(dueState(box))).length,
     dueSoonBoxCount: boxes.filter((box) => box.status === 'full' && dueState(box) === 'due-soon').length,
   }
+}
+
+export async function getSampleStorageBox(boxId: string) {
+  const storage = await getSampleStorage()
+  const box = storage.boxes.find((item) => item.id === boxId)
+  if (!box) throw new HttpError(404, 'Sample Storage box not found')
+  return box
+}
+
+export async function logSampleStorageExport(boxId: string, actor: Actor) {
+  await writeAudit(actor, 'storage.box.export', 'storage-box', boxId)
 }
 
 export async function autofillSampleStorage(actor: Actor) {

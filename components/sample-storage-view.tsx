@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useMemo, useState } from 'react'
-import { Archive, CalendarClock, CheckCircle2, Clock3, PackageOpen, Play, ShieldAlert, Trash2 } from 'lucide-react'
+import { Archive, CalendarClock, CheckCircle2, Clock3, FileDown, PackageOpen, Play, ShieldAlert, Trash2 } from 'lucide-react'
 import { STORAGE_BOX_CAPACITY, getStorageDueState } from '@/lib/nipt/rules'
 import type { SampleStorageData, StorageBox, StorageSlot } from '@/lib/nipt/types'
 import { api, Button, Card, Input, Notice, PageHeader } from '@/components/ui'
@@ -54,6 +54,25 @@ export function SampleStorageView({ initialData }: { initialData: SampleStorageD
     } catch (requestError) { showError(requestError) } finally { setBusy(false) }
   }
 
+  async function exportPdf() {
+    if (!selectedBox) return
+    setBusy(true); setError(''); setMessage('')
+    try {
+      const response = await fetch(`/api/sample-storage/${selectedBox.id}/export`)
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { error?: string } | null
+        throw new Error(body?.error ?? 'Export PDF ไม่สำเร็จ')
+      }
+      const downloadUrl = URL.createObjectURL(await response.blob())
+      const anchor = document.createElement('a')
+      anchor.href = downloadUrl
+      anchor.download = `Sample-Storage_${selectedBox.boxLabel.replace('/', '-')}.pdf`
+      anchor.click()
+      URL.revokeObjectURL(downloadUrl)
+      setMessage(`Export PDF ${selectedBox.boxLabel} แล้ว`)
+    } catch (requestError) { showError(requestError) } finally { setBusy(false) }
+  }
+
   return (
     <div className="mx-auto max-w-[1600px] space-y-5">
       <PageHeader
@@ -87,13 +106,13 @@ export function SampleStorageView({ initialData }: { initialData: SampleStorageD
           </div>
         </Card>
 
-        {selectedBox ? <StorageBoxDetail box={selectedBox} busy={busy} destroyedByName={destroyedByName} onDestroyedByNameChange={setDestroyedByName} onDestroy={destroyBox} /> : <Card className="flex min-h-[520px] items-center justify-center p-8 text-center"><div><Archive className="mx-auto size-10 text-[#adc0c3]" /><p className="mt-3 text-sm text-[#82979d]">ยังไม่มีกล่องจัดเก็บตัวอย่าง</p></div></Card>}
+        {selectedBox ? <StorageBoxDetail box={selectedBox} busy={busy} destroyedByName={destroyedByName} onDestroyedByNameChange={setDestroyedByName} onDestroy={destroyBox} onExport={exportPdf} /> : <Card className="flex min-h-[520px] items-center justify-center p-8 text-center"><div><Archive className="mx-auto size-10 text-[#adc0c3]" /><p className="mt-3 text-sm text-[#82979d]">ยังไม่มีกล่องจัดเก็บตัวอย่าง</p></div></Card>}
       </div>
     </div>
   )
 }
 
-function StorageBoxDetail({ box, busy, destroyedByName, onDestroyedByNameChange, onDestroy }: { box: StorageBox; busy: boolean; destroyedByName: string; onDestroyedByNameChange: (value: string) => void; onDestroy: () => void }) {
+function StorageBoxDetail({ box, busy, destroyedByName, onDestroyedByNameChange, onDestroy, onExport }: { box: StorageBox; busy: boolean; destroyedByName: string; onDestroyedByNameChange: (value: string) => void; onDestroy: () => void; onExport: () => void }) {
   const occupied = occupiedSlots(box)
   const due = getStorageDueState(box.destroyDueDate)
   const canDestroy = box.status === 'full' && ['due', 'overdue'].includes(due.state)
@@ -104,7 +123,7 @@ function StorageBoxDetail({ box, busy, destroyedByName, onDestroyedByNameChange,
       <div className="border-b border-[#e0e9ea] bg-[linear-gradient(110deg,#fafdfe,#f1f9f8)] px-4 py-4 sm:px-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div><p className="text-[11px] font-bold tracking-[0.16em] text-[#087f79] uppercase">9×9 cryo archive</p><h2 className="mono mt-1 text-2xl font-bold text-[#173d50]">{box.boxLabel}</h2><p className="mt-1 text-xs text-[#789097]">จัดเก็บแล้ว {occupied}/{STORAGE_BOX_CAPACITY} ช่อง</p></div>
-          <BoxStatus box={box} />
+          <div className="flex items-center gap-2"><Button variant="secondary" disabled={busy} onClick={onExport}><FileDown className="size-4" /> Export PDF</Button><BoxStatus box={box} /></div>
         </div>
         <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-[#ddebea]"><div className="h-full rounded-full bg-[#087f79] transition-all" style={{ width: `${occupied / STORAGE_BOX_CAPACITY * 100}%` }} /></div>
       </div>
@@ -141,8 +160,8 @@ function StorageCell({ slot }: { slot?: StorageSlot }) {
   const sample = slot?.sample
   return <div title={sample ? `${slot.position} · LN ${sample.ln} · ${sample.lnHalos}` : slot?.position} className={`min-h-16 rounded-md border p-1.5 transition ${sample ? 'border-[#a9d7d2] bg-white shadow-sm' : 'border-[#dce7e8] bg-[#f2f6f6]'}`}>
     <p className="mono text-[9px] font-bold text-[#89a0a5]">{slot?.position}</p>
-    <p className={`mono mt-2 truncate text-[9px] font-bold ${sample ? 'text-[#315d67]' : 'text-[#bdcacc]'}`}>{sample?.lnHalos ?? 'EMPTY'}</p>
-    {sample ? <p className="mt-0.5 truncate text-[9px] text-[#8b9da2]">LN {sample.ln}</p> : null}
+    <p className={`mono mt-2 whitespace-nowrap text-[8px] leading-tight font-bold tracking-[-0.06em] ${sample ? 'text-[#315d67]' : 'text-[#bdcacc]'}`}>{sample?.lnHalos ?? 'EMPTY'}</p>
+    {sample ? <p className="mono mt-0.5 whitespace-nowrap text-[8px] leading-tight tracking-[-0.06em] text-[#8b9da2]">LN {sample.ln}</p> : null}
   </div>
 }
 

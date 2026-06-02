@@ -8,6 +8,7 @@ import {
   getStoragePosition,
   getPlatePosition,
   getSheetNumber,
+  isGestationalAgeComplete,
   isGestationalAgeWarning,
 } from './rules'
 
@@ -55,6 +56,11 @@ describe('sample workflow formatting', () => {
   it('formats and highlights gestational age', () => {
     expect(formatGestationalAge(16, 3)).toBe('16W 3D')
     expect(formatGestationalAge(null, null)).toBe('-')
+    expect(formatGestationalAge(12, null)).toBe('12W ?D')
+    expect(formatGestationalAge(null, 3)).toBe('?W 3D')
+    expect(isGestationalAgeComplete(null, null)).toBe(true)
+    expect(isGestationalAgeComplete(16, 3)).toBe(true)
+    expect(isGestationalAgeComplete(12, null)).toBe(false)
     expect(isGestationalAgeWarning(21)).toBe(false)
     expect(isGestationalAgeWarning(22)).toBe(true)
   })

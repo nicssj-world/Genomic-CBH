@@ -173,7 +173,7 @@ function PlateGrid({ batch, selectedSheet }: { batch: BatchDetail; selectedSheet
       const control = Boolean(slot.controlType)
       return <div key={slot.id} className={`min-h-18 rounded-lg border p-2 transition ${current ? control ? 'border-[#e4c180] bg-[#fff8e9]' : slot.sample ? 'border-[#aad7d2] bg-white shadow-sm' : 'border-[#d4e1e2] bg-white' : 'border-[#e2ebec] bg-[#f2f6f6] opacity-45'}`}>
         <div className="flex items-center justify-between gap-1"><span className="mono text-[10px] font-bold text-[#789097]">{String(slot.slotNumber).padStart(2, '0')}</span><span className="mono text-[10px] font-bold text-[#087f79]">{slot.platePosition}</span></div>
-        <p className={`mono mt-2 truncate text-[10px] font-bold ${control ? 'text-[#a66a15]' : slot.sample ? 'text-[#355d67]' : 'text-[#b3c1c4]'}`}>{control ? `${slot.controlType} ctrl` : slot.sample?.runSampleId ?? 'EMPTY'}</p>
+        <p className={`mono mt-2 whitespace-nowrap text-[8px] leading-tight font-bold tracking-[-0.06em] ${control ? 'text-[#a66a15]' : slot.sample ? 'text-[#355d67]' : 'text-[#b3c1c4]'}`}>{control ? `${slot.controlType} ctrl` : slot.sample?.runSampleId ?? 'EMPTY'}</p>
       </div>
     })}</div>
   </div>
