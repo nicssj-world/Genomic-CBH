@@ -46,6 +46,7 @@ function slot(slotNumber: number): BatchSlot {
       runId: `run-${slotNumber}`,
       runType: 'Normal',
       stage: 'Extract',
+      pregnancyType: 'Single',
       runSampleId: `26B260601${String(slotNumber).padStart(3, '0')}-1`,
     },
   }

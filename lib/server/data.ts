@@ -2,7 +2,7 @@ import 'server-only'
 
 import { randomUUID } from 'node:crypto'
 import type { Actor, BatchDetail, BatchSlot, DashboardData, QcImport, QcSheet, QcWorkspace, ResultRevision, SampleRow, SampleStorageData, StorageBox, TaskSheet, UserRole } from '@/lib/nipt/types'
-import { RUN_TYPES, STAGES, formatBangkokIsoDate, formatRunSampleId, getStorageDueState, isGestationalAgeComplete, type RunType, type SampleStage } from '@/lib/nipt/rules'
+import { PREGNANCY_TYPES, RUN_TYPES, STAGES, formatBangkokIsoDate, formatRunSampleId, getStorageDueState, isGestationalAgeComplete, type PregnancyType, type RunType, type SampleStage, type StorageBoxType } from '@/lib/nipt/rules'
 import { buildTaskSheetSourceRows } from '@/lib/nipt/task-sheet-template'
 import { HttpError } from '@/lib/server/errors'
 import { createDownloadUrl, createUploadUrl, getStorageObjectInfo, readStorageObject, safeFileName } from '@/lib/server/storage'
@@ -107,10 +107,12 @@ export async function listSamples(options: { search?: string; limit?: number } =
     const run = runMap.get(asString(sample.id))
     if (!run) return []
     const runType = asString(run.run_type) as RunType
+    const pregnancyType = (PREGNANCY_TYPES.includes(asString(sample.pregnancy_type) as PregnancyType) ? asString(sample.pregnancy_type) : 'Single') as PregnancyType
+    const effectiveLnHalos = pregnancyType === 'Twin' ? `${asString(sample.ln_halos)}D` : asString(sample.ln_halos)
     return [{
       id: asString(sample.id),
       ln: asString(sample.ln),
-      lnHalos: asString(sample.ln_halos),
+      lnHalos: effectiveLnHalos,
       importedAt: asString(sample.imported_at),
       importedByName: nameMap.get(asString(sample.imported_by)) ?? null,
       gaWeeks: nullableNumber(sample.ga_weeks),
@@ -125,7 +127,8 @@ export async function listSamples(options: { search?: string; limit?: number } =
       runId: asString(run.id),
       runType,
       stage: asString(run.stage) as SampleStage,
-      runSampleId: formatRunSampleId(asString(sample.ln_halos), runType),
+      pregnancyType,
+      runSampleId: formatRunSampleId(effectiveLnHalos, runType),
       activeResult: revisionMap.get(asString(sample.id)) ?? null,
     }]
   })
@@ -145,7 +148,7 @@ export async function registerSample(ln: string, actor: Actor) {
 
 export async function updateSample(
   sampleId: string,
-  input: { gaWeeks?: number | null; gaDays?: number | null; stage?: SampleStage; runType?: RunType },
+  input: { gaWeeks?: number | null; gaDays?: number | null; stage?: SampleStage; runType?: RunType; pregnancyType?: PregnancyType },
   actor: Actor,
 ) {
   const admin = getAdminClient()
@@ -190,6 +193,15 @@ export async function updateSample(
     fail(runError)
     activeRunId = run!.id
     await writeAudit(actor, 'sample.rerun.create', 'sample', sampleId, { from: sample.runType, to: input.runType })
+  }
+
+  if (input.pregnancyType && input.pregnancyType !== sample.pregnancyType) {
+    const { error } = await admin
+      .from('nipt_samples')
+      .update({ pregnancy_type: input.pregnancyType, updated_at: new Date().toISOString() })
+      .eq('id', sampleId)
+    fail(error)
+    await writeAudit(actor, 'sample.pregnancy_type.update', 'sample', sampleId, { from: sample.pregnancyType, to: input.pregnancyType })
   }
 
   if (input.stage && !(input.runType && input.runType !== sample.runType)) {
@@ -689,9 +701,13 @@ export async function getSampleStorage(): Promise<SampleStorageData> {
   const boxRows = (boxData ?? []) as RecordRow[]
   const slotRows = (slotData ?? []) as RecordRow[]
   const sampleIds = ids(slotRows, 'sample_id')
-  const { data: sampleData, error: sampleError } = sampleIds.length
-    ? await admin.from('nipt_samples').select('id,ln,ln_halos,patient_name,imported_at').in('id', sampleIds)
-    : { data: [], error: null }
+  const [{ data: sampleData, error: sampleError }, recordedByNames, checkoutNames] = await Promise.all([
+    sampleIds.length
+      ? admin.from('nipt_samples').select('id,ln,ln_halos,patient_name,imported_at,pregnancy_type').in('id', sampleIds)
+      : Promise.resolve({ data: [] as RecordRow[], error: null }),
+    getNameMap(ids(boxRows, 'destroyed_recorded_by')),
+    getNameMap(ids(slotRows, 'checked_out_by')),
+  ])
   fail(sampleError)
 
   const sampleMap = new Map(((sampleData ?? []) as RecordRow[]).map((sample) => [asString(sample.id), {
@@ -700,8 +716,8 @@ export async function getSampleStorage(): Promise<SampleStorageData> {
     lnHalos: asString(sample.ln_halos),
     patientName: nullableString(sample.patient_name),
     importedAt: asString(sample.imported_at),
+    pregnancyType: asString(sample.pregnancy_type) || 'Single',
   }]))
-  const recordedByNames = await getNameMap(ids(boxRows, 'destroyed_recorded_by'))
   const slotsByBox = new Map<string, RecordRow[]>()
   slotRows.forEach((slot) => {
     const boxId = asString(slot.box_id)
@@ -716,6 +732,7 @@ export async function getSampleStorage(): Promise<SampleStorageData> {
     boxYear: Number(box.box_year),
     boxLabel: asString(box.box_label),
     status: asString(box.status) as StorageBox['status'],
+    boxType: (asString(box.box_type) || 'buffy_coat') as StorageBoxType,
     startedAt: asString(box.started_at),
     filledAt: nullableString(box.filled_at),
     destroyDueDate: nullableString(box.destroy_due_date),
@@ -728,19 +745,113 @@ export async function getSampleStorage(): Promise<SampleStorageData> {
       position: asString(slot.position),
       storedAt: nullableString(slot.stored_at),
       sample: sampleMap.get(asString(slot.sample_id)) ?? null,
+      checkedOutAt: nullableString(slot.checked_out_at),
+      checkedOutByName: checkoutNames.get(asString(slot.checked_out_by)) ?? null,
+      checkoutReason: nullableString(slot.checkout_reason),
     })),
   }))
+
+  const sampleBoxTypes = new Map<string, Set<string>>()
+  for (const box of boxes) {
+    for (const slot of box.slots) {
+      if (slot.sample) {
+        const s = sampleBoxTypes.get(slot.sample.id) ?? new Set()
+        s.add(box.boxType)
+        sampleBoxTypes.set(slot.sample.id, s)
+      }
+    }
+  }
+  const fullyStoredCount = [...sampleBoxTypes.values()].filter((v) => v.size === 2).length
+
   const today = formatBangkokIsoDate()
   const dueState = (box: StorageBox) => getStorageDueState(box.destroyDueDate, today).state
-  const assignedCount = storedCount ?? 0
   return {
     boxes,
-    queueCount: Math.max(0, (sampleCount ?? 0) - assignedCount),
-    storedCount: assignedCount,
+    queueCount: Math.max(0, (sampleCount ?? 0) - fullyStoredCount),
+    storedCount: storedCount ?? 0,
     fullBoxCount: boxes.filter((box) => box.status === 'full').length,
     dueBoxCount: boxes.filter((box) => box.status === 'full' && ['due', 'overdue'].includes(dueState(box))).length,
     dueSoonBoxCount: boxes.filter((box) => box.status === 'full' && dueState(box) === 'due-soon').length,
   }
+}
+
+export async function deleteStorageBox(boxId: string, actor: Actor) {
+  if (actor.role !== 'Admin') throw new HttpError(403, 'Admin permission required')
+  const admin = getAdminClient()
+  const { data: box, error: labelError } = await admin
+    .from('nipt_storage_boxes').select('box_label').eq('id', boxId).maybeSingle()
+  fail(labelError)
+  if (!box) throw new HttpError(404, 'Storage box not found')
+  // Slots deleted automatically via ON DELETE CASCADE
+  const { error } = await admin.from('nipt_storage_boxes').delete().eq('id', boxId)
+  fail(error)
+  await writeAudit(actor, 'storage.box.delete', 'storage-box', boxId, { boxLabel: box.box_label })
+  return getSampleStorage()
+}
+
+export async function moveStorageSlot(sourceSlotId: string, targetSlotId: string, actor: Actor) {
+  if (sourceSlotId === targetSlotId) throw new HttpError(400, 'Source and target are the same slot')
+  const admin = getAdminClient()
+  const { data: slotData, error: slotError } = await admin
+    .from('nipt_storage_slots')
+    .select('id,box_id,position,sample_id,stored_at,stored_by,checked_out_at')
+    .in('id', [sourceSlotId, targetSlotId])
+  fail(slotError)
+  const slots = (slotData ?? []) as RecordRow[]
+  const source = slots.find((s) => asString(s.id) === sourceSlotId)
+  const target = slots.find((s) => asString(s.id) === targetSlotId)
+  if (!source || !target) throw new HttpError(404, 'Slot not found')
+  if (asString(source.box_id) !== asString(target.box_id)) throw new HttpError(400, 'Slots must be in the same box')
+  if (!source.sample_id) throw new HttpError(400, 'Source slot is empty')
+  if (source.checked_out_at) throw new HttpError(400, 'Cannot move a checked-out sample')
+  if (target.checked_out_at) throw new HttpError(400, 'Cannot swap with a checked-out slot')
+
+  // Sequential swap to avoid any transient duplicate key issues:
+  // Step 1: clear source, Step 2: fill target, Step 3: fill source with target's old data
+  const { error: e1 } = await admin
+    .from('nipt_storage_slots')
+    .update({ sample_id: null, stored_at: null, stored_by: null })
+    .eq('id', sourceSlotId)
+  fail(e1)
+  const { error: e2 } = await admin
+    .from('nipt_storage_slots')
+    .update({ sample_id: source.sample_id, stored_at: source.stored_at, stored_by: source.stored_by })
+    .eq('id', targetSlotId)
+  fail(e2)
+  if (target.sample_id) {
+    const { error: e3 } = await admin
+      .from('nipt_storage_slots')
+      .update({ sample_id: target.sample_id, stored_at: target.stored_at, stored_by: target.stored_by })
+      .eq('id', sourceSlotId)
+    fail(e3)
+  }
+  await writeAudit(actor, 'sample.storage.move', 'storage-slot', sourceSlotId, {
+    from: asString(source.position),
+    to: asString(target.position),
+    swap: Boolean(target.sample_id),
+  })
+  return getSampleStorage()
+}
+
+export async function checkOutStorageSlot(slotId: string, reason: string, actor: Actor) {
+  const admin = getAdminClient()
+  const { data: slot, error: slotError } = await admin
+    .from('nipt_storage_slots')
+    .select('id,sample_id,checked_out_at')
+    .eq('id', slotId)
+    .maybeSingle()
+  fail(slotError)
+  if (!slot) throw new HttpError(404, 'Storage slot not found')
+  if (!slot.sample_id) throw new HttpError(400, 'Slot has no sample to check out')
+  if (slot.checked_out_at) throw new HttpError(409, 'Sample is already checked out from this slot')
+  const now = new Date().toISOString()
+  const { error } = await admin
+    .from('nipt_storage_slots')
+    .update({ checked_out_at: now, checked_out_by: actor.id, checkout_reason: reason.trim() })
+    .eq('id', slotId)
+  fail(error)
+  await writeAudit(actor, 'sample.checkout', 'storage-slot', slotId, { reason: reason.trim() })
+  return getSampleStorage()
 }
 
 export async function getSampleStorageBox(boxId: string) {

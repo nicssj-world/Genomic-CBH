@@ -6,10 +6,13 @@ export type SampleStage = (typeof STAGES)[number]
 export const RUN_TYPES = ['Normal', 'Re-Library', 'Re-Sampling'] as const
 export type RunType = (typeof RUN_TYPES)[number]
 
+export const PREGNANCY_TYPES = ['Single', 'Twin'] as const
+export type PregnancyType = (typeof PREGNANCY_TYPES)[number]
+
 export const RUN_SUFFIX: Record<RunType, string> = {
   Normal: '-1',
   'Re-Library': '-2',
-  'Re-Sampling': '-3',
+  'Re-Sampling': 'R',
 }
 
 export const CONTROL_SLOTS = {
@@ -26,6 +29,13 @@ export const PATIENT_SLOTS = Array.from({ length: 48 }, (_, index) => index + 1)
 
 export const STORAGE_BOX_CAPACITY = 81
 export const STORAGE_WARNING_DAYS = 90
+
+export const STORAGE_BOX_TYPES = ['buffy_coat', 'backup'] as const
+export type StorageBoxType = (typeof STORAGE_BOX_TYPES)[number]
+export const STORAGE_BOX_TYPE_LABEL: Record<StorageBoxType, string> = {
+  buffy_coat: 'Buffy Coat',
+  backup: 'Backup',
+}
 
 export const SHEET_SLOT_RANGES = {
   1: [1, 16],

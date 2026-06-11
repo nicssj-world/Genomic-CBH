@@ -1,31 +1,49 @@
 'use client'
 
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Archive, CalendarClock, CheckCircle2, Clock3, FileDown, PackageOpen, Play, ShieldAlert, Trash2 } from 'lucide-react'
-import { STORAGE_BOX_CAPACITY, getStorageDueState } from '@/lib/nipt/rules'
+import { STORAGE_BOX_CAPACITY, STORAGE_BOX_TYPE_LABEL, getStorageDueState, type StorageBoxType } from '@/lib/nipt/rules'
 import type { SampleStorageData, StorageBox, StorageSlot } from '@/lib/nipt/types'
 import { api, Button, Card, Input, Notice, PageHeader } from '@/components/ui'
 
 const letters = [...'ABCDEFGHI']
 const rows = Array.from({ length: 9 }, (_, index) => index + 1)
 
+const FILTER_TABS: { key: StorageBoxType | 'all'; label: string }[] = [
+  { key: 'all', label: 'ทั้งหมด' },
+  { key: 'backup', label: 'Backup Box' },
+  { key: 'buffy_coat', label: 'Buffy Coat Box' },
+]
+
 export function SampleStorageView({ initialData }: { initialData: SampleStorageData }) {
   const [data, setData] = useState(initialData)
+  const [typeFilter, setTypeFilter] = useState<StorageBoxType | 'all'>('all')
   const [selectedBoxId, setSelectedBoxId] = useState(initialData.boxes.find((box) => box.status === 'filling')?.id ?? initialData.boxes[0]?.id ?? '')
   const [destroyedByName, setDestroyedByName] = useState('')
+  const [checkoutSlot, setCheckoutSlot] = useState<StorageSlot | null>(null)
+  const [checkoutReason, setCheckoutReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
+  const visibleBoxes = typeFilter === 'all' ? data.boxes : data.boxes.filter((box) => box.boxType === typeFilter)
   const selectedBox = data.boxes.find((box) => box.id === selectedBoxId) ?? data.boxes.find((box) => box.status === 'filling') ?? data.boxes[0] ?? null
   const activeBox = data.boxes.find((box) => box.status === 'filling') ?? null
-  const dueBoxes = useMemo(() => data.boxes.filter((box) => {
+  const dueBoxes = data.boxes.filter((box) => {
     if (box.status !== 'full') return false
     return ['due', 'overdue'].includes(getStorageDueState(box.destroyDueDate).state)
-  }), [data.boxes])
+  })
 
   function showError(requestError: unknown) {
     setError(requestError instanceof Error ? requestError.message : 'ดำเนินการไม่สำเร็จ')
+  }
+
+  function handleFilterChange(filter: StorageBoxType | 'all') {
+    setTypeFilter(filter)
+    const boxes = filter === 'all' ? data.boxes : data.boxes.filter((b) => b.boxType === filter)
+    if (!boxes.find((b) => b.id === selectedBoxId)) {
+      setSelectedBoxId(boxes.find((b) => b.status === 'filling')?.id ?? boxes[0]?.id ?? '')
+    }
   }
 
   async function autofill() {
@@ -73,6 +91,43 @@ export function SampleStorageView({ initialData }: { initialData: SampleStorageD
     } catch (requestError) { showError(requestError) } finally { setBusy(false) }
   }
 
+  async function doDelete(boxId: string) {
+    setBusy(true); setError(''); setMessage('')
+    try {
+      const result = await api<{ storage: SampleStorageData }>(`/api/sample-storage/${boxId}`, { method: 'DELETE' })
+      setData(result.storage)
+      setSelectedBoxId(result.storage.boxes.find((b) => b.status === 'filling')?.id ?? result.storage.boxes[0]?.id ?? '')
+      setMessage('ลบกล่องเรียบร้อยแล้ว')
+    } catch (requestError) { showError(requestError) } finally { setBusy(false) }
+  }
+
+  async function doMove(sourceSlotId: string, targetSlotId: string) {
+    setBusy(true); setError(''); setMessage('')
+    try {
+      const result = await api<{ storage: SampleStorageData }>(`/api/sample-storage/${sourceSlotId}/move`, {
+        method: 'POST',
+        body: JSON.stringify({ targetSlotId }),
+      })
+      setData(result.storage)
+      setMessage('ย้าย sample เรียบร้อยแล้ว')
+    } catch (requestError) { showError(requestError) } finally { setBusy(false) }
+  }
+
+  async function doCheckout() {
+    if (!checkoutSlot || !checkoutReason.trim()) return
+    setBusy(true); setError(''); setMessage('')
+    try {
+      const result = await api<{ storage: SampleStorageData }>(`/api/sample-storage/${checkoutSlot.id}/checkout`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: checkoutReason }),
+      })
+      setData(result.storage)
+      setMessage(`Check out sample จาก ${checkoutSlot.position} แล้ว`)
+      setCheckoutSlot(null)
+      setCheckoutReason('')
+    } catch (requestError) { showError(requestError) } finally { setBusy(false) }
+  }
+
   return (
     <div className="mx-auto max-w-[1600px] space-y-5">
       <PageHeader
@@ -99,33 +154,119 @@ export function SampleStorageView({ initialData }: { initialData: SampleStorageD
           <div className="border-b border-[#e0e9ea] px-4 py-3">
             <h2 className="font-bold text-[#173d50]">Storage boxes</h2>
             <p className="mt-0.5 text-xs text-[#83979d]">{data.boxes.length} กล่อง · เต็มแล้ว {data.fullBoxCount}</p>
+            <div className="mt-2 flex gap-1">
+              {FILTER_TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => handleFilterChange(tab.key)}
+                  className={`rounded-full px-2.5 py-1 text-[10px] font-bold tracking-[0.04em] transition ${typeFilter === tab.key ? 'bg-[#087f79] text-white' : 'text-[#6a8c93] hover:bg-[#f0f7f7]'}`}
+                >{tab.label}</button>
+              ))}
+            </div>
           </div>
           <div className="max-h-[760px] space-y-1.5 overflow-y-auto p-2.5">
-            {data.boxes.map((box) => <BoxSelector key={box.id} box={box} active={selectedBox?.id === box.id} onClick={() => setSelectedBoxId(box.id)} />)}
-            {!data.boxes.length ? <p className="px-3 py-8 text-center text-sm leading-6 text-[#91a4a9]">ยังไม่มีกล่องจัดเก็บ<br />กด Auto-fill เมื่อมีตัวอย่างรับเข้า</p> : null}
+            {visibleBoxes.map((box) => <BoxSelector key={box.id} box={box} active={selectedBox?.id === box.id} onClick={() => setSelectedBoxId(box.id)} />)}
+            {!visibleBoxes.length ? <p className="px-3 py-8 text-center text-sm leading-6 text-[#91a4a9]">ยังไม่มีกล่องจัดเก็บ<br />กด Auto-fill เมื่อมีตัวอย่างรับเข้า</p> : null}
           </div>
         </Card>
 
-        {selectedBox ? <StorageBoxDetail box={selectedBox} busy={busy} destroyedByName={destroyedByName} onDestroyedByNameChange={setDestroyedByName} onDestroy={destroyBox} onExport={exportPdf} /> : <Card className="flex min-h-[520px] items-center justify-center p-8 text-center"><div><Archive className="mx-auto size-10 text-[#adc0c3]" /><p className="mt-3 text-sm text-[#82979d]">ยังไม่มีกล่องจัดเก็บตัวอย่าง</p></div></Card>}
+        {selectedBox
+          ? <StorageBoxDetail box={selectedBox} busy={busy} destroyedByName={destroyedByName} onDestroyedByNameChange={setDestroyedByName} onDestroy={destroyBox} onExport={exportPdf} onCheckout={setCheckoutSlot} onMove={doMove} onDelete={doDelete} />
+          : <Card className="flex min-h-[520px] items-center justify-center p-8 text-center"><div><Archive className="mx-auto size-10 text-[#adc0c3]" /><p className="mt-3 text-sm text-[#82979d]">ยังไม่มีกล่องจัดเก็บตัวอย่าง</p></div></Card>
+        }
       </div>
+
+      {checkoutSlot ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            {checkoutSlot.checkedOutAt ? (
+              <>
+                <h2 className="text-base font-bold text-[#8b7a2a]">Check-Out Record</h2>
+                <p className="mono mt-1 text-sm text-[#718990]">{checkoutSlot.position} · {checkoutSlot.sample?.lnHalos}</p>
+                <div className="mt-4 space-y-3">
+                  <InfoRow label="เวลา" value={formatDateTime(checkoutSlot.checkedOutAt)} />
+                  <InfoRow label="โดย" value={checkoutSlot.checkedOutByName ?? '-'} />
+                  <InfoRow label="เหตุผล" value={checkoutSlot.checkoutReason ?? '-'} />
+                </div>
+                <div className="mt-5 flex justify-end">
+                  <Button variant="secondary" onClick={() => setCheckoutSlot(null)}>ปิด</Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="text-base font-bold text-[#173d50]">Check Out Sample</h2>
+                <p className="mono mt-1 text-sm text-[#718990]">{checkoutSlot.position} · {checkoutSlot.sample?.lnHalos}</p>
+                <label className="mt-4 block text-[11px] font-bold uppercase tracking-wide text-[#83979d]">เหตุผลที่นำออก</label>
+                <textarea
+                  className="mono mt-1.5 w-full resize-none rounded-lg border border-[#dce7e8] p-2.5 text-sm outline-none focus:border-[#087f79]"
+                  rows={3}
+                  value={checkoutReason}
+                  onChange={(e) => setCheckoutReason(e.target.value)}
+                  placeholder="ระบุเหตุผลที่นำตัวอย่างออก..."
+                  autoFocus
+                />
+                <div className="mt-4 flex justify-end gap-2">
+                  <Button variant="secondary" disabled={busy} onClick={() => { setCheckoutSlot(null); setCheckoutReason('') }}>ยกเลิก</Button>
+                  <Button disabled={busy || !checkoutReason.trim()} onClick={doCheckout}>ยืนยัน Check Out</Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
 
-function StorageBoxDetail({ box, busy, destroyedByName, onDestroyedByNameChange, onDestroy, onExport }: { box: StorageBox; busy: boolean; destroyedByName: string; onDestroyedByNameChange: (value: string) => void; onDestroy: () => void; onExport: () => void }) {
+function StorageBoxDetail({ box, busy, destroyedByName, onDestroyedByNameChange, onDestroy, onExport, onCheckout, onMove, onDelete }: {
+  box: StorageBox
+  busy: boolean
+  destroyedByName: string
+  onDestroyedByNameChange: (value: string) => void
+  onDestroy: () => void
+  onExport: () => void
+  onCheckout: (slot: StorageSlot) => void
+  onMove: (sourceSlotId: string, targetSlotId: string) => void
+  onDelete: (boxId: string) => void
+}) {
+  const [dragSourceId, setDragSourceId] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const occupied = occupiedSlots(box)
   const due = getStorageDueState(box.destroyDueDate)
   const canDestroy = box.status === 'full' && ['due', 'overdue'].includes(due.state)
   const slotMap = new Map(box.slots.map((slot) => [slot.slotNumber, slot]))
+  const typeLabel = STORAGE_BOX_TYPE_LABEL[box.boxType]
 
   return <div className="space-y-4">
     <Card className="overflow-hidden">
+      {confirmDelete && (
+        <div className="flex items-center justify-between gap-3 border-b border-[#fcd5d8] bg-[#fff5f5] px-4 py-3">
+          <p className="text-sm font-semibold text-[#be3d49]">
+            ยืนยันลบกล่อง {box.boxLabel} ออกจากระบบ?
+            {occupied > 0 && <span className="ml-1 font-normal text-[#a66a71]">(มี {occupied} ตัวอย่างที่จะหายไปด้วย)</span>}
+          </p>
+          <div className="flex gap-2">
+            <Button variant="secondary" disabled={busy} onClick={() => setConfirmDelete(false)}>ยกเลิก</Button>
+            <Button variant="danger" disabled={busy} onClick={() => { setConfirmDelete(false); onDelete(box.id) }}>ลบ</Button>
+          </div>
+        </div>
+      )}
       <div className="border-b border-[#e0e9ea] bg-[linear-gradient(110deg,#fafdfe,#f1f9f8)] px-4 py-4 sm:px-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div><p className="text-[11px] font-bold tracking-[0.16em] text-[#087f79] uppercase">9×9 cryo archive</p><h2 className="mono mt-1 text-2xl font-bold text-[#173d50]">{box.boxLabel}</h2><p className="mt-1 text-xs text-[#789097]">จัดเก็บแล้ว {occupied}/{STORAGE_BOX_CAPACITY} ช่อง</p></div>
-          <div className="flex items-center gap-2"><Button variant="secondary" disabled={busy} onClick={onExport}><FileDown className="size-4" /> Export PDF</Button><BoxStatus box={box} /></div>
+          <div>
+            <p className="text-[11px] font-bold tracking-[0.16em] text-[#087f79] uppercase">9×9 · {typeLabel} Archive</p>
+            <h2 className="mono mt-1 text-2xl font-bold text-[#173d50]">{box.boxLabel}</h2>
+            <p className="mt-1 text-xs text-[#789097]">จัดเก็บแล้ว {occupied}/{STORAGE_BOX_CAPACITY} ช่อง</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" disabled={busy} onClick={onExport}><FileDown className="size-4" /> Export PDF</Button>
+            <Button variant="danger" disabled={busy} onClick={() => setConfirmDelete(true)}><Trash2 className="size-4" /> ลบกล่อง</Button>
+            <BoxStatus box={box} />
+          </div>
         </div>
-        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-[#ddebea]"><div className="h-full rounded-full bg-[#087f79] transition-all" style={{ width: `${occupied / STORAGE_BOX_CAPACITY * 100}%` }} /></div>
+        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-[#ddebea]">
+          <div className="h-full rounded-full bg-[#087f79] transition-all" style={{ width: `${occupied / STORAGE_BOX_CAPACITY * 100}%` }} />
+        </div>
       </div>
 
       <div className="grid gap-px border-b border-[#e0e9ea] bg-[#e0e9ea] sm:grid-cols-4">
@@ -144,7 +285,19 @@ function StorageBoxDetail({ box, busy, destroyedByName, onDestroyedByNameChange,
               <div className="mono flex items-center justify-center text-[11px] font-bold text-[#718b92]">{row}</div>
               {letters.map((_, column) => {
                 const slot = slotMap.get((row - 1) * 9 + column + 1)
-                return <StorageCell key={slot?.id ?? `${row}-${column}`} slot={slot} />
+                return <StorageCell
+                  key={slot?.id ?? `${row}-${column}`}
+                  slot={slot}
+                  boxType={box.boxType}
+                  onCheckout={onCheckout}
+                  dragSourceId={dragSourceId}
+                  onDragStart={setDragSourceId}
+                  onDragEnd={() => setDragSourceId(null)}
+                  onDrop={(targetId) => {
+                    if (dragSourceId && dragSourceId !== targetId) onMove(dragSourceId, targetId)
+                    setDragSourceId(null)
+                  }}
+                />
               })}
             </Fragment>)}
           </div>
@@ -156,13 +309,56 @@ function StorageBoxDetail({ box, busy, destroyedByName, onDestroyedByNameChange,
   </div>
 }
 
-function StorageCell({ slot }: { slot?: StorageSlot }) {
+function StorageCell({ slot, boxType, onCheckout, dragSourceId, onDragStart, onDragEnd, onDrop }: {
+  slot?: StorageSlot
+  boxType: StorageBoxType
+  onCheckout: (slot: StorageSlot) => void
+  dragSourceId: string | null
+  onDragStart: (slotId: string) => void
+  onDragEnd: () => void
+  onDrop: (targetSlotId: string) => void
+}) {
   const sample = slot?.sample
-  return <div title={sample ? `${slot.position} · LN ${sample.ln} · ${sample.lnHalos}` : slot?.position} className={`min-h-16 rounded-md border p-1.5 transition ${sample ? 'border-[#a9d7d2] bg-white shadow-sm' : 'border-[#dce7e8] bg-[#f2f6f6]'}`}>
-    <p className="mono text-[9px] font-bold text-[#89a0a5]">{slot?.position}</p>
-    <p className={`mono mt-2 whitespace-nowrap text-[8px] leading-tight font-bold tracking-[-0.06em] ${sample ? 'text-[#315d67]' : 'text-[#bdcacc]'}`}>{sample?.lnHalos ?? 'EMPTY'}</p>
-    {sample ? <p className="mono mt-0.5 whitespace-nowrap text-[8px] leading-tight tracking-[-0.06em] text-[#8b9da2]">LN {sample.ln}</p> : null}
-  </div>
+  const isCheckedOut = Boolean(slot?.checkedOutAt)
+  const effectiveLn = sample ? (sample.pregnancyType === 'Twin' ? sample.lnHalos + 'D' : sample.lnHalos) : null
+  const displayLn = effectiveLn ? (boxType === 'backup' ? `${effectiveLn}-3` : effectiveLn) : null
+
+  const isDragging = dragSourceId === slot?.id
+  const canDrag = Boolean(sample && !isCheckedOut)
+  const isDropTarget = dragSourceId !== null && slot?.id !== dragSourceId && !isCheckedOut
+
+  return (
+    <div
+      title={sample ? `${slot!.position} · LN ${sample.ln} · ${displayLn}` : slot?.position}
+      draggable={canDrag}
+      onDragStart={canDrag && slot ? (e) => { e.dataTransfer.setData('text/plain', slot.id); e.dataTransfer.effectAllowed = 'move'; onDragStart(slot.id) } : undefined}
+      onDragOver={isDropTarget ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' } : undefined}
+      onDrop={isDropTarget && slot ? (e) => { e.preventDefault(); onDrop(slot.id) } : undefined}
+      onDragEnd={isDragging ? onDragEnd : undefined}
+      onClick={slot && sample && !isDragging ? () => onCheckout(slot) : undefined}
+      className={`relative min-h-16 rounded-md border p-1.5 transition select-none
+        ${isDragging
+          ? 'border-dashed border-[#a9d7d2] bg-[#f0fafa] opacity-40'
+          : isCheckedOut
+            ? 'cursor-pointer border-[#d4af37] bg-[#fffbea] hover:border-[#b8930a]'
+            : sample
+              ? 'cursor-grab border-[#a9d7d2] bg-white shadow-sm hover:border-[#087f79] active:cursor-grabbing'
+              : dragSourceId
+                ? 'border-dashed border-[#87c5bf] bg-[#f0faf9]'
+                : 'border-[#dce7e8] bg-[#f2f6f6]'
+        }`}
+    >
+      {isCheckedOut && (
+        <span className="absolute right-0.5 top-0.5 rounded-sm bg-[#c9a600] px-0.5 text-[6px] font-bold text-white">OUT</span>
+      )}
+      <p className="mono text-[9px] font-bold text-[#89a0a5]">{slot?.position}</p>
+      <p className={`mono mt-2 whitespace-nowrap text-[8px] font-bold leading-tight tracking-[-0.06em]
+        ${sample ? (isCheckedOut ? 'text-[#8b7a2a]' : 'text-[#315d67]') : 'text-[#bdcacc]'}`}>
+        {displayLn ?? 'EMPTY'}
+      </p>
+      {sample ? <p className="mono mt-0.5 whitespace-nowrap text-[8px] leading-tight tracking-[-0.06em] text-[#8b9da2]">LN {sample.ln}</p> : null}
+    </div>
+  )
 }
 
 function DestructionPanel({ box, dueState, canDestroy, busy, destroyedByName, onDestroyedByNameChange, onDestroy }: { box: StorageBox; dueState: ReturnType<typeof getStorageDueState>['state']; canDestroy: boolean; busy: boolean; destroyedByName: string; onDestroyedByNameChange: (value: string) => void; onDestroy: () => void }) {
@@ -179,8 +375,15 @@ function DestructionPanel({ box, dueState, canDestroy, busy, destroyedByName, on
 function BoxSelector({ box, active, onClick }: { box: StorageBox; active: boolean; onClick: () => void }) {
   const occupied = occupiedSlots(box)
   const due = getStorageDueState(box.destroyDueDate)
+  const typeLabel = STORAGE_BOX_TYPE_LABEL[box.boxType]
   return <button onClick={onClick} className={`w-full rounded-lg border px-3 py-2.5 text-left transition ${active ? 'border-[#087f79] bg-[#eef9f7]' : 'border-transparent hover:border-[#dce7e8] hover:bg-[#f8fbfb]'}`}>
-    <div className="flex items-center justify-between gap-2"><span className="mono text-xs font-bold text-[#315763]">{box.boxLabel}</span><span className={`size-2 rounded-full ${statusDot(box, due.state)}`} /></div>
+    <div className="flex items-center justify-between gap-2">
+      <span className="mono text-xs font-bold text-[#315763]">{box.boxLabel}</span>
+      <div className="flex items-center gap-1.5">
+        <span className="rounded-full bg-[#e4f1f0] px-1.5 py-0.5 text-[9px] font-bold text-[#3d7c76]">{typeLabel}</span>
+        <span className={`size-2 rounded-full ${statusDot(box, due.state)}`} />
+      </div>
+    </div>
     <div className="mt-1.5 flex items-center justify-between text-[10px] text-[#85999e]"><span>{occupied}/81 ช่อง</span><span>{box.status === 'full' ? countdownText(due.daysRemaining) : box.status === 'destroyed' ? 'ทำลายแล้ว' : 'กำลังเติม'}</span></div>
   </button>
 }
@@ -226,4 +429,13 @@ function formatDate(value: string) {
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Bangkok' }).format(new Date(value))
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase tracking-wide text-[#83979d]">{label}</p>
+      <p className="mt-0.5 text-sm text-[#2d4a52]">{value}</p>
+    </div>
+  )
 }

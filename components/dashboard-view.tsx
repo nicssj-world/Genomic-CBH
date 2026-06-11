@@ -16,6 +16,7 @@ export function DashboardView({ initialData }: { initialData: DashboardData }) {
   const [runType, setRunType] = useState<RunType | 'all'>('all')
   const [gaOnly, setGaOnly] = useState(false)
   const scanRef = useRef<HTMLInputElement>(null)
+  const busyRef = useRef(false)
 
   useEffect(() => scanRef.current?.focus(), [])
 
@@ -23,27 +24,40 @@ export function DashboardView({ initialData }: { initialData: DashboardData }) {
     setData(await api<DashboardData>('/api/dashboard'))
   }
 
-  async function register(event: React.FormEvent) {
-    event.preventDefault()
-    if (!ln.trim()) return
+  async function doRegister(value: string) {
+    const trimmed = value.trim()
+    if (!trimmed || busyRef.current) return
+    if (!/^\d{10}$/.test(trimmed)) {
+      setMessage({ tone: 'danger', text: 'ตรวจสอบเลข LN อีกครั้ง — ต้องเป็นตัวเลข 10 หลักเท่านั้น' })
+      setLn('')
+      scanRef.current?.focus()
+      return
+    }
+    busyRef.current = true
     setBusy(true)
     setMessage(null)
     try {
       const result = await api<{ duplicate: boolean; sample_id: string; ln_halos: string }>('/api/samples', {
         method: 'POST',
-        body: JSON.stringify({ ln }),
+        body: JSON.stringify({ ln: trimmed }),
       })
       setMessage(result.duplicate
-        ? { tone: 'warning', text: `LN ${ln.trim()} มีอยู่แล้ว ระบบเปิดรายการเดิมให้ตรวจสอบได้`, sampleId: result.sample_id }
-        : { tone: 'success', text: `รับ LN ${ln.trim()} แล้ว · LN Halos ${result.ln_halos}` })
+        ? { tone: 'warning', text: `LN ${trimmed} มีอยู่แล้ว ระบบเปิดรายการเดิมให้ตรวจสอบได้`, sampleId: result.sample_id }
+        : { tone: 'success', text: `รับ LN ${trimmed} แล้ว · LN Halos ${result.ln_halos}` })
       setLn('')
       await refresh()
     } catch (error) {
       setMessage({ tone: 'danger', text: error instanceof Error ? error.message : 'รับ LN ไม่สำเร็จ' })
     } finally {
+      busyRef.current = false
       setBusy(false)
       scanRef.current?.focus()
     }
+  }
+
+  async function register(event: React.FormEvent) {
+    event.preventDefault()
+    await doRegister(ln)
   }
 
   const recent = useMemo(() => data.recentSamples.filter((sample) => {
@@ -69,7 +83,11 @@ export function DashboardView({ initialData }: { initialData: DashboardData }) {
                 <input
                   ref={scanRef}
                   value={ln}
-                  onChange={(event) => setLn(event.target.value)}
+                  onChange={(event) => {
+                    const v = event.target.value
+                    setLn(v)
+                    if (v.trim().length === 10) void doRegister(v)
+                  }}
                   className="mono w-full rounded-xl border border-[#bcd4d5] bg-[#fbfdfd] py-3 pr-3 pl-11 text-base font-medium tracking-[0.06em] text-[#173d50] outline-none transition placeholder:font-sans placeholder:tracking-normal placeholder:text-[#99afb4] focus:border-[#087f79] focus:ring-4 focus:ring-[#087f79]/10"
                   placeholder="ยิงบาร์โค้ด หรือกรอก LN แล้วกด Enter"
                 />

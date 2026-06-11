@@ -1,4 +1,4 @@
-import type { ControlType, RunType, SampleStage } from '@/lib/nipt/rules'
+import type { ControlType, PregnancyType, RunType, SampleStage, StorageBoxType } from '@/lib/nipt/rules'
 import type { StockExpiryState } from '@/lib/nipt/stock-rules'
 
 export type UserRole = 'Admin' | 'CBH-Staff'
@@ -40,6 +40,7 @@ export interface SampleRow {
   runId: string
   runType: RunType
   stage: SampleStage
+  pregnancyType: PregnancyType
   runSampleId: string
   activeResult?: ResultRevision | null
 }
@@ -96,6 +97,7 @@ export interface StorageSlotSample {
   lnHalos: string
   patientName: string | null
   importedAt: string
+  pregnancyType: string
 }
 
 export interface StorageSlot {
@@ -104,6 +106,9 @@ export interface StorageSlot {
   position: string
   storedAt: string | null
   sample: StorageSlotSample | null
+  checkedOutAt: string | null
+  checkedOutByName: string | null
+  checkoutReason: string | null
 }
 
 export interface StorageBox {
@@ -112,6 +117,7 @@ export interface StorageBox {
   boxYear: number
   boxLabel: string
   status: 'filling' | 'full' | 'destroyed'
+  boxType: StorageBoxType
   startedAt: string
   filledAt: string | null
   destroyDueDate: string | null

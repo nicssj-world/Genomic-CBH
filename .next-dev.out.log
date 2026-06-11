@@ -1,0 +1,46 @@
+
+> genomic-cbh@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://100.93.32.243:3000
+- Environments: .env.local
+✓ Ready in 458ms
+Creating turbopack project { dir: 'E:\\Claude workspace\\Genomic-CBH', testMode: true }
+
+ GET /login 200 in 399ms (next.js: 232ms, application-code: 166ms)
+ POST /api/auth/login 200 in 2.7s (next.js: 82ms, application-code: 2.7s)
+ POST /api/auth/login 200 in 950ms (next.js: 1783µs, application-code: 948ms)
+ GET /dashboard 200 in 2.7s (next.js: 520ms, proxy.ts: 205ms, application-code: 2.0s)
+ GET /dashboard 200 in 3.0s (next.js: 3ms, proxy.ts: 412ms, application-code: 2.5s)
+ GET /dashboard 200 in 2.7s (next.js: 3ms, proxy.ts: 414ms, application-code: 2.3s)
+ GET /dashboard 200 in 2.8s (next.js: 3ms, proxy.ts: 438ms, application-code: 2.4s)
+ GET /patients 200 in 1498ms (next.js: 279ms, proxy.ts: 142ms, application-code: 1077ms)
+ GET /dashboard 200 in 1919ms (next.js: 3ms, proxy.ts: 133ms, application-code: 1784ms)
+ GET /patients 200 in 1038ms (next.js: 3ms, proxy.ts: 151ms, application-code: 884ms)
+ GET /task-lists 200 in 2.2s (next.js: 267ms, proxy.ts: 356ms, application-code: 1625ms)
+ GET /patients 200 in 1418ms (next.js: 3ms, proxy.ts: 452ms, application-code: 963ms)
+ GET /task-lists 200 in 1447ms (next.js: 3ms, proxy.ts: 134ms, application-code: 1310ms)
+ GET /api/batches/94643209-ef03-46db-b2b9-dc1bc33d78ee/sheets/1/export 200 in 11.8s (next.js: 687ms, application-code: 11.1s)
+ GET /qc-measurements 200 in 853ms (next.js: 262ms, proxy.ts: 146ms, application-code: 445ms)
+ GET /task-lists 200 in 1406ms (next.js: 3ms, proxy.ts: 134ms, application-code: 1269ms)
+ GET /qc-measurements 200 in 593ms (next.js: 3ms, proxy.ts: 144ms, application-code: 447ms)
+ GET /sample-storage 200 in 1058ms (next.js: 291ms, proxy.ts: 384ms, application-code: 383ms)
+ GET /qc-measurements 200 in 925ms (next.js: 3ms, proxy.ts: 132ms, application-code: 790ms)
+ GET /sample-storage 200 in 484ms (next.js: 3ms, proxy.ts: 156ms, application-code: 326ms)
+ GET /sample-storage 200 in 505ms (next.js: 3ms, proxy.ts: 146ms, application-code: 356ms)
+ GET /api/sample-storage/57e5aa12-01c7-41c9-8549-f5f2adeb30fa/export 200 in 6.6s (next.js: 635ms, application-code: 5.9s)
+ GET /stock 200 in 1009ms (next.js: 308ms, proxy.ts: 151ms, application-code: 550ms)
+ GET /qc-measurements 200 in 823ms (next.js: 3ms, proxy.ts: 370ms, application-code: 451ms)
+ GET /patients 200 in 1096ms (next.js: 3ms, proxy.ts: 184ms, application-code: 909ms)
+ GET /dashboard 200 in 2.1s (next.js: 2ms, proxy.ts: 151ms, application-code: 1992ms)
+ GET /patients 200 in 995ms (next.js: 3ms, proxy.ts: 155ms, application-code: 837ms)
+ GET /dashboard 200 in 2.1s (next.js: 2ms, proxy.ts: 135ms, application-code: 1942ms)
+ GET /sample-storage 200 in 457ms (next.js: 3ms, proxy.ts: 145ms, application-code: 310ms)
+ GET /dashboard 200 in 2.1s (next.js: 3ms, proxy.ts: 142ms, application-code: 1966ms)
+ GET /qc-measurements 200 in 586ms (next.js: 3ms, proxy.ts: 151ms, application-code: 433ms)
+ GET /dashboard 200 in 1736ms (next.js: 2ms, proxy.ts: 147ms, application-code: 1587ms)
+ GET /task-lists 200 in 1535ms (next.js: 3ms, proxy.ts: 196ms, application-code: 1337ms)
+ GET /dashboard 200 in 2.4s (next.js: 2ms, proxy.ts: 132ms, application-code: 2.2s)
+ GET /his-imports 200 in 1265ms (next.js: 251ms, proxy.ts: 491ms, application-code: 523ms)

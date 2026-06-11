@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { RUN_TYPES, STAGES } from '@/lib/nipt/rules'
+import { PREGNANCY_TYPES, RUN_TYPES, STAGES } from '@/lib/nipt/rules'
 import { requireActor, requireAdmin } from '@/lib/server/auth'
 import { deleteSample, getSample, updateSample } from '@/lib/server/data'
 import { readJson, respond } from '@/lib/server/route'
@@ -9,6 +9,7 @@ const patchSchema = z.object({
   gaDays: z.number().int().min(0).max(6).nullable().optional(),
   stage: z.enum(STAGES).optional(),
   runType: z.enum(RUN_TYPES).optional(),
+  pregnancyType: z.enum(PREGNANCY_TYPES).optional(),
 })
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {

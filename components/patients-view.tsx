@@ -1,9 +1,10 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { Download, FileClock, FileText, Search, Trash2, Upload, X } from 'lucide-react'
+import { Download, FileClock, FileText, Printer, Search, Trash2, Upload, X } from 'lucide-react'
 import type { Actor, SampleRow } from '@/lib/nipt/types'
-import { RUN_TYPES, STAGES, formatGestationalAge, isGestationalAgeComplete, isGestationalAgeWarning, type RunType, type SampleStage } from '@/lib/nipt/rules'
+import { PREGNANCY_TYPES, RUN_TYPES, STAGES, formatGestationalAge, isGestationalAgeComplete, isGestationalAgeWarning, type PregnancyType, type RunType, type SampleStage } from '@/lib/nipt/rules'
+import { printTubeLabels } from '@/lib/nipt/label-print'
 import { api, Button, Card, Field, Input, Notice, PageHeader, RunBadge, Select, StageBadge } from '@/components/ui'
 
 type Revision = {
@@ -23,6 +24,8 @@ export function PatientsView({ actor, initialSamples, initialSelectedId }: { act
   const [selectedId, setSelectedId] = useState(initialSelectedId ?? '')
   const [search, setSearch] = useState('')
   const [notice, setNotice] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = useState(false)
   const selected = samples.find((sample) => sample.id === selectedId) ?? null
   const filtered = useMemo(() => {
     const key = search.trim().toLowerCase()
@@ -35,6 +38,26 @@ export function PatientsView({ actor, initialSamples, initialSelectedId }: { act
     setSelectedId(keepId)
   }
 
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds(selectedIds.size === filtered.length && filtered.length > 0 ? new Set() : new Set(filtered.map((s) => s.id)))
+  }
+
+  async function deleteSelected() {
+    const count = selectedIds.size
+    if (!window.confirm(`ยืนยันการลบ ${count} รายการ?\nLN Halos ที่ลบจะไม่ถูกนำกลับมาใช้ซ้ำ`)) return
+    setDeleting(true)
+    try {
+      await Promise.all([...selectedIds].map((id) => api(`/api/samples/${id}`, { method: 'DELETE' })))
+      setSelectedIds(new Set())
+      await refresh('')
+      setNotice(`ลบ ${count} รายการแล้ว`)
+    } catch { setNotice('ลบบางรายการไม่สำเร็จ') } finally { setDeleting(false) }
+  }
+
   return (
     <div className="mx-auto max-w-[1500px] space-y-5">
       <PageHeader eyebrow="Patient registry" title="ทะเบียนคนไข้" description="ค้นหา แก้ข้อมูล workflow และจัดการไฟล์ผลตรวจ PDF ตาม LN" />
@@ -44,11 +67,21 @@ export function PatientsView({ actor, initialSamples, initialSelectedId }: { act
           <div><h2 className="font-bold text-[#173d50]">Samples</h2><p className="mt-0.5 text-xs text-[#80959b]">{samples.length} รายการในระบบ</p></div>
           <div className="relative w-full sm:w-80"><Search className="absolute left-3 top-2.5 size-4 text-[#8ca3a8]" /><Input value={search} onChange={(event) => setSearch(event.target.value)} className="pl-9" placeholder="ค้นหา LN, LN Halos, HN หรือชื่อ" /></div>
         </div>
+        {actor.role === 'Admin' && selectedIds.size > 0 && (
+          <div className="flex items-center justify-between border-b border-[#f0d8d8] bg-[#fff8f8] px-4 py-2.5">
+            <span className="text-sm font-bold text-[#a83541]">{selectedIds.size} รายการที่เลือก</span>
+            <div className="flex gap-2">
+              <Button variant="secondary" className="px-2.5 py-1.5 text-xs" onClick={() => setSelectedIds(new Set())}>ยกเลิก</Button>
+              <Button variant="danger" className="px-2.5 py-1.5 text-xs" disabled={deleting} onClick={deleteSelected}><Trash2 className="size-3.5" /> ลบที่เลือก</Button>
+            </div>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="bg-[#f7fafa] text-[11px] tracking-[0.08em] text-[#779097] uppercase"><tr><th className="px-4 py-2.5">LN</th><th className="px-3 py-2.5">LN Halos</th><th className="px-3 py-2.5">Name / HN</th><th className="px-3 py-2.5">GA</th><th className="px-3 py-2.5">Run Type</th><th className="px-3 py-2.5">Stage</th><th className="px-3 py-2.5">Result</th><th className="px-4 py-2.5"></th></tr></thead>
+            <thead className="bg-[#f7fafa] text-[11px] tracking-[0.08em] text-[#779097] uppercase"><tr>{actor.role === 'Admin' ? <th className="w-10 px-3 py-2.5"><input type="checkbox" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={toggleSelectAll} className="size-4" /></th> : null}<th className="px-4 py-2.5">LN</th><th className="px-3 py-2.5">LN Halos</th><th className="px-3 py-2.5">Name / HN</th><th className="px-3 py-2.5">GA</th><th className="px-3 py-2.5">Run Type</th><th className="px-3 py-2.5">Stage</th><th className="px-3 py-2.5">Result</th><th className="px-4 py-2.5"></th></tr></thead>
             <tbody className="divide-y divide-[#edf2f2]">
-              {filtered.map((sample) => <tr key={sample.id} className="hover:bg-[#fbfdfd]">
+              {filtered.map((sample) => <tr key={sample.id} className={`hover:bg-[#fbfdfd] ${selectedIds.has(sample.id) ? 'bg-[#fff8f8]' : ''}`}>
+                {actor.role === 'Admin' ? <td className="px-3 py-3"><input type="checkbox" checked={selectedIds.has(sample.id)} onChange={() => toggleSelect(sample.id)} className="size-4" /></td> : null}
                 <td className="mono px-4 py-3 font-bold text-[#173d50]">{sample.ln}</td>
                 <td className="mono px-3 py-3 text-xs text-[#45636e]">{sample.lnHalos}</td>
                 <td className="px-3 py-3"><span className="block font-semibold text-[#45636e]">{sample.patientName ?? '-'}</span><span className="text-xs text-[#93a5aa]">{sample.hn ? `HN ${sample.hn}` : 'ยังไม่มีข้อมูล HIS'}</span></td>
@@ -56,7 +89,7 @@ export function PatientsView({ actor, initialSamples, initialSelectedId }: { act
                 <td className="px-3 py-3"><RunBadge runType={sample.runType} /></td>
                 <td className="px-3 py-3"><StageBadge stage={sample.stage} /></td>
                 <td className="px-3 py-3">{sample.activeResult ? <span className="flex items-center gap-1 text-xs font-bold text-[#4f7a54]"><FileText className="size-3.5" /> PDF</span> : <span className="text-xs text-[#a0afb3]">-</span>}</td>
-                <td className="px-4 py-3 text-right"><Button variant="secondary" className="px-2.5 py-1.5 text-xs" onClick={() => setSelectedId(sample.id)}>เปิด</Button></td>
+                <td className="px-4 py-3 text-right"><div className="flex items-center justify-end gap-1.5"><button onClick={() => printTubeLabels([sample])} title="Print tube labels" className="rounded p-1.5 text-[#087f79] transition hover:bg-[#daf0ee]"><Printer className="size-4" /></button><Button variant="secondary" className="px-2.5 py-1.5 text-xs" onClick={() => setSelectedId(sample.id)}>เปิด</Button></div></td>
               </tr>)}
             </tbody>
           </table>
@@ -73,6 +106,7 @@ function PatientDrawer({ actor, sample, onClose, onDelete, onRefresh }: { actor:
   const [gaDays, setGaDays] = useState(sample.gaDays?.toString() ?? '')
   const [stage, setStage] = useState<SampleStage>(sample.stage)
   const [runType, setRunType] = useState<RunType>(sample.runType)
+  const [pregnancyType, setPregnancyType] = useState<PregnancyType>(sample.pregnancyType)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [revisions, setRevisions] = useState<Revision[] | null>(null)
@@ -95,6 +129,7 @@ function PatientDrawer({ actor, sample, onClose, onDelete, onRefresh }: { actor:
           gaDays: parsedGaDays,
           stage,
           runType,
+          pregnancyType,
         }),
       })
       await onRefresh('บันทึกข้อมูลตัวอย่างแล้ว')
@@ -177,6 +212,7 @@ function PatientDrawer({ actor, sample, onClose, onDelete, onRefresh }: { actor:
               <Info label="Doctor" value={sample.doctor ?? '-'} />
               <Info label="Imported by" value={sample.importedByName ?? '-'} />
             </div>
+            <Button variant="secondary" className="mt-3 w-full" onClick={() => printTubeLabels([sample])}><Printer className="size-4" /> Print Labels</Button>
           </Card>
           <Card className="p-4">
             <h3 className="font-bold text-[#173d50]">Workflow</h3>
@@ -185,6 +221,7 @@ function PatientDrawer({ actor, sample, onClose, onDelete, onRefresh }: { actor:
               <Field label="Days" hint="กรอก 0 หากไม่มีเศษวัน"><Input type="number" min="0" max="6" value={gaDays} onChange={(event) => setGaDays(event.target.value)} /></Field>
               <Field label="Run type"><Select value={runType} onChange={(event) => setRunType(event.target.value as RunType)}>{RUN_TYPES.map((item) => <option key={item}>{item}</option>)}</Select></Field>
               <Field label="Stage"><Select value={stage} onChange={(event) => setStage(event.target.value as SampleStage)}>{STAGES.map((item) => <option key={item}>{item}</option>)}</Select></Field>
+              <Field label="ประเภทครรภ์"><Select value={pregnancyType} onChange={(event) => setPregnancyType(event.target.value as PregnancyType)}>{PREGNANCY_TYPES.map((item) => <option key={item}>{item}</option>)}</Select></Field>
             </div>
             {Number(gaWeeks) >= 22 ? <div className="mt-3"><Notice tone="danger">GA ตั้งแต่ 22W ขึ้นไป กรุณาตรวจสอบก่อนดำเนินการต่อ</Notice></div> : null}
             {error ? <div className="mt-3"><Notice tone="danger">{error}</Notice></div> : null}

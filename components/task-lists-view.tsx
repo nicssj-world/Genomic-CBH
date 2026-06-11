@@ -1,9 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CalendarDays, CheckCircle2, ClipboardList, FileDown, FlaskConical, Lock, Play, Plus, RotateCcw, Save, Zap } from 'lucide-react'
+import { CalendarDays, CheckCircle2, ClipboardList, FileDown, FlaskConical, Lock, Play, Plus, Printer, RotateCcw, Save, Zap } from 'lucide-react'
 import type { Actor, BatchDetail, SampleRow, TaskSheet } from '@/lib/nipt/types'
 import { formatControlCode } from '@/lib/nipt/rules'
+import { printTubeLabels } from '@/lib/nipt/label-print'
 import { api, Button, Card, Field, Input, Notice, PageHeader, Select } from '@/components/ui'
 
 export function TaskListsView({ actor, initialBatch, initialSamples }: { actor: Actor; initialBatch: BatchDetail | null; initialSamples: SampleRow[] }) {
@@ -16,10 +17,12 @@ export function TaskListsView({ actor, initialBatch, initialSamples }: { actor: 
   const [urgentRunId, setUrgentRunId] = useState('')
   const [runLabel, setRunLabel] = useState(initialBatch?.runLabel ?? '')
 
+  const [showPrintModal, setShowPrintModal] = useState(false)
   const assignedIds = useMemo(() => new Set(batch?.slots.map((slot) => slot.sampleRunId).filter(Boolean)), [batch])
   const queue = useMemo(() => samples.filter((sample) => sample.stage === 'Received' && !assignedIds.has(sample.runId)), [assignedIds, samples])
   const sheet = batch?.sheets.find((item) => item.sheetNumber === selectedSheet) ?? null
   const slots = batch?.slots.filter((item) => item.sheetNumber === selectedSheet) ?? []
+  const sheetPatients = useMemo(() => slots.filter((s) => s.sample && !s.controlType).map((s) => s.sample!), [slots])
 
   function showError(requestError: unknown) {
     setError(requestError instanceof Error ? requestError.message : 'ดำเนินการไม่สำเร็จ')
@@ -136,8 +139,9 @@ export function TaskListsView({ actor, initialBatch, initialSamples }: { actor: 
               })}
             </div>
             <div className="p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-[#173d50]">Plate positions 1-48</h2><p className="mt-0.5 text-xs text-[#83989e]">กำลังดู Task List {selectedSheet} · ตำแหน่ง {slots[0]?.slotNumber}-{slots.at(-1)?.slotNumber}</p></div><div className="flex gap-2"><Button variant="secondary" onClick={exportPdf} disabled={busy}><FileDown className="size-4" /> Export PDF</Button>{sheet?.finalizedAt ? actor.role === 'Admin' ? <Button variant="danger" onClick={unlock} disabled={busy}><RotateCcw className="size-4" /> Unlock</Button> : null : <Button onClick={finalize} disabled={busy}><Lock className="size-4" /> Finalize</Button>}</div></div>
-              <PlateGrid batch={batch} selectedSheet={selectedSheet} />
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-[#173d50]">Plate positions 1-48</h2><p className="mt-0.5 text-xs text-[#83989e]">กำลังดู Task List {selectedSheet} · ตำแหน่ง {slots[0]?.slotNumber}-{slots.at(-1)?.slotNumber}</p></div><div className="flex gap-2"><Button variant="secondary" onClick={() => setShowPrintModal(true)} disabled={sheetPatients.length === 0}><Printer className="size-4" /> Print Labels</Button><Button variant="secondary" onClick={exportPdf} disabled={busy}><FileDown className="size-4" /> Export PDF</Button>{sheet?.finalizedAt ? actor.role === 'Admin' ? <Button variant="danger" onClick={unlock} disabled={busy}><RotateCcw className="size-4" /> Unlock</Button> : null : <Button onClick={finalize} disabled={busy}><Lock className="size-4" /> Finalize</Button>}</div></div>
+              <PlateGrid batch={batch} selectedSheet={selectedSheet} onPrint={(s) => printTubeLabels([s])} />
+              {showPrintModal && <PrintModal patients={sheetPatients} taskList={selectedSheet} onClose={() => setShowPrintModal(false)} />}
             </div>
           </Card>
         </div>
@@ -166,7 +170,7 @@ export function TaskListsView({ actor, initialBatch, initialSamples }: { actor: 
   )
 }
 
-function PlateGrid({ batch, selectedSheet }: { batch: BatchDetail; selectedSheet: number }) {
+function PlateGrid({ batch, selectedSheet, onPrint }: { batch: BatchDetail; selectedSheet: number; onPrint: (sample: SampleRow) => void }) {
   return <div className="rounded-xl border border-[#dbe7e8] bg-[#f8fbfb] p-3">
     <div className="grid grid-cols-8 gap-1.5">{batch.slots.map((slot) => {
       const current = slot.sheetNumber === selectedSheet
@@ -174,6 +178,7 @@ function PlateGrid({ batch, selectedSheet }: { batch: BatchDetail; selectedSheet
       return <div key={slot.id} className={`min-h-18 rounded-lg border p-2 transition ${current ? control ? 'border-[#e4c180] bg-[#fff8e9]' : slot.sample ? 'border-[#aad7d2] bg-white shadow-sm' : 'border-[#d4e1e2] bg-white' : 'border-[#e2ebec] bg-[#f2f6f6] opacity-45'}`}>
         <div className="flex items-center justify-between gap-1"><span className="mono text-[10px] font-bold text-[#789097]">{String(slot.slotNumber).padStart(2, '0')}</span><span className="mono text-[10px] font-bold text-[#087f79]">{slot.platePosition}</span></div>
         <p className={`mono mt-2 whitespace-nowrap text-[8px] leading-tight font-bold tracking-[-0.06em] ${control ? 'text-[#a66a15]' : slot.sample ? 'text-[#355d67]' : 'text-[#b3c1c4]'}`}>{control ? `${slot.controlType} ctrl` : slot.sample?.runSampleId ?? 'EMPTY'}</p>
+        {current && !control && slot.sample ? <button onClick={() => onPrint(slot.sample!)} title={`พิมพ์ label: ${slot.sample.lnHalos}`} className="mt-1.5 flex w-full items-center justify-center rounded py-0.5 text-[#087f79] transition hover:bg-[#daf0ee]"><Printer className="size-2.5" /></button> : null}
       </div>
     })}</div>
   </div>
@@ -207,4 +212,45 @@ function SheetMetadata({ sheet, disabled, busy, onSave }: { sheet: TaskSheet; di
 
 function ControlLine({ label, slot, code }: { label: string; slot: string; code: string }) {
   return <div className="flex items-center justify-between gap-2 border-b border-[#edf2f2] pb-2"><div><p className="font-bold text-[#6c7d82]">{label}</p><p className="text-[10px] text-[#a2b0b3]">Slot {slot}</p></div><span className="mono text-[10px] font-bold text-[#a66a15]">{code || 'รอ Work date'}</span></div>
+}
+
+function PrintModal({ patients, taskList, onClose }: { patients: SampleRow[]; taskList: number; onClose: () => void }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set(patients.map((p) => p.runId)))
+  const allSelected = selected.size === patients.length
+  const toggle = (id: string) => setSelected((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+  function handlePrint() {
+    const toPrint = patients.filter((p) => selected.has(p.runId))
+    if (toPrint.length > 0) printTubeLabels(toPrint)
+    onClose()
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex w-full max-w-sm flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-[#e0e9ea] px-5 py-4">
+          <h2 className="text-sm font-bold text-[#173d50]">Print Labels — Task List {taskList}</h2>
+          <button onClick={onClose} className="text-[#aabec3] transition hover:text-[#5e7981]">✕</button>
+        </div>
+        <label className="flex cursor-pointer items-center gap-2.5 border-b border-[#e0e9ea] px-5 py-3 text-sm font-bold text-[#345863]">
+          <input type="checkbox" checked={allSelected} onChange={() => setSelected(allSelected ? new Set() : new Set(patients.map((p) => p.runId)))} className="size-4" />
+          ทั้งหมด ({patients.length} ตัวอย่าง)
+        </label>
+        <div className="max-h-72 overflow-y-auto px-3 py-2">
+          {patients.map((p) => (
+            <label key={p.runId} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-[#f5f9f9]">
+              <input type="checkbox" checked={selected.has(p.runId)} onChange={() => toggle(p.runId)} className="size-4" />
+              <div className="min-w-0 flex-1">
+                <p className="mono text-xs font-bold text-[#355d67]">{p.runSampleId}</p>
+                <p className="truncate text-[11px] text-[#7c9298]">{p.patientName ?? '—'}</p>
+              </div>
+              <span className="shrink-0 rounded border border-[#e4c180] bg-[#fff8e9] px-1.5 py-0.5 text-[10px] text-[#a66a15]">{p.runType}</span>
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-[#e0e9ea] px-5 py-4">
+          <Button variant="secondary" onClick={onClose}>ยกเลิก</Button>
+          <Button onClick={handlePrint} disabled={selected.size === 0}><Printer className="size-4" /> Print {selected.size > 0 ? `${selected.size} ตัวอย่าง` : ''}</Button>
+        </div>
+      </div>
+    </div>
+  )
 }
