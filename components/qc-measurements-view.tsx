@@ -77,13 +77,13 @@ export function QcMeasurementsView({ initialWorkspace }: { initialWorkspace: QcW
     <PageHeader
       eyebrow="Library quality checkpoint"
       title="QC Measurements"
-      description="บันทึก DNA concentration ของ plate 48 ตำแหน่งหลัง Ext. & Prep. Task Lists ครบทั้ง 3 ใบ และ export ด้วยชีทต้นฉบับ"
+      description="บันทึก DNA concentration ของ plate 48 ตำแหน่งหลัง finalize Ext. & Prep. Task List ใบแรก และ export ด้วยชีทต้นฉบับ"
       actions={sheet ? <Button disabled={busy || !sheet.ready} onClick={exportPdf}><FileDown className="size-4" /> Export PDF</Button> : null}
     />
 
     {message ? <Notice tone="success">{message}</Notice> : null}
     {error ? <Notice tone="danger">{error}</Notice> : null}
-    {sheet && !sheet.ready ? <Notice tone="warning">Task List ของ batch นี้ถูกปลดล็อก กรุณา finalize ให้ครบทั้ง 3 ใบก่อนแก้ไขหรือ export QC measurements</Notice> : null}
+    {sheet && !sheet.ready ? <Notice tone="warning">Task List ของ batch นี้ถูกปลดล็อก กรุณา finalize อย่างน้อย 1 ใบก่อนแก้ไขหรือ export QC measurements</Notice> : null}
 
     {!sheet ? <EmptyState /> : <div className="grid gap-4 xl:grid-cols-[270px_minmax(0,1fr)_310px]">
       <BatchRail sheets={workspace.sheets} selectedSheetId={sheet.id} onSelect={setSelectedSheetId} />
@@ -201,7 +201,7 @@ function QubitImportRow({ item }: { item: QcImport }) {
 }
 
 function EmptyState() {
-  return <Card className="flex min-h-96 flex-col items-center justify-center p-8 text-center"><span className="flex size-14 items-center justify-center rounded-2xl bg-[#edf8f6] text-[#087f79]"><Microscope className="size-7" /></span><h2 className="mt-4 text-xl font-bold text-[#173d50]">ยังไม่มี batch ที่พร้อมทำ QC</h2><p className="mt-2 max-w-lg text-sm leading-6 text-[#7c9298]">QC Measurements จะสร้างอัตโนมัติเมื่อ Ext. & Prep. Task Lists 1-3 ของ batch ถูกเติมครบและ finalize แล้ว</p><div className="mt-5 flex items-center gap-2 text-xs font-bold text-[#6a8a91]"><FlaskConical className="size-4" /> รอ plate 48 ตำแหน่ง</div></Card>
+  return <Card className="flex min-h-96 flex-col items-center justify-center p-8 text-center"><span className="flex size-14 items-center justify-center rounded-2xl bg-[#edf8f6] text-[#087f79]"><Microscope className="size-7" /></span><h2 className="mt-4 text-xl font-bold text-[#173d50]">ยังไม่มี batch ที่พร้อมทำ QC</h2><p className="mt-2 max-w-lg text-sm leading-6 text-[#7c9298]">QC Measurements จะสร้างอัตโนมัติเมื่อมี Ext. & Prep. Task List ของ batch ถูก finalize อย่างน้อย 1 ใบ</p><div className="mt-5 flex items-center gap-2 text-xs font-bold text-[#6a8a91]"><FlaskConical className="size-4" /> รอ plate 48 ตำแหน่ง</div></Card>
 }
 
 function formatSize(bytes: number) {

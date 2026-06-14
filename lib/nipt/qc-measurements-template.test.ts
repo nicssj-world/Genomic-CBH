@@ -8,7 +8,6 @@ function taskSheet(sheetNumber: number): TaskSheet {
     sheetNumber,
     workDate: `2026-06-0${sheetNumber}`,
     operatorText: `Operator ${sheetNumber}`,
-    plasmaHandler: null,
     extractionLot: null,
     extractionExpiry: null,
     libraryLot: null,
@@ -88,13 +87,18 @@ function qcSheet(): QcSheet {
 }
 
 describe('QC Measurements workbook template payload', () => {
-  it('maps the original 48 Task List slots and keeps the fixed -1 control suffix', () => {
+  it('maps all 48 Task List Run cells across the three sheets and keeps the fixed -1 control suffix', () => {
     const payload = buildQcMeasurementsTemplatePayload(batch(), qcSheet())
 
-    expect(payload.sourceRows).toHaveLength(48)
-    expect(payload.sourceRows[0]).toEqual({ sourceRow: 3, lnHalos: '26N120260601', printedSampleId: '26N120260601-1' })
-    expect(payload.sourceRows[24]).toEqual({ sourceRow: 27, lnHalos: '26N220260602', printedSampleId: '26N220260602-1' })
-    expect(payload.sourceRows[39]).toEqual({ sourceRow: 42, lnHalos: '26N320260603', printedSampleId: '26N320260603-1' })
+    expect(payload.sampleCells).toHaveLength(48)
+    // slot 1 (positive control) → Task List 1, left-strip top cell
+    expect(payload.sampleCells[0]).toEqual({ sheetName: 'Ext. & Prep. Task List 1', cell: 'B9', value: '26N120260601-1' })
+    // slot 25 (negative control) → Task List 2, right-strip top cell
+    expect(payload.sampleCells[24]).toEqual({ sheetName: 'Ext. & Prep. Task List 2', cell: 'H9', value: '26N220260602-1' })
+    // slot 40 (blank control) → Task List 3, left-strip bottom cell
+    expect(payload.sampleCells[39]).toEqual({ sheetName: 'Ext. & Prep. Task List 3', cell: 'B16', value: '26N320260603-1' })
+    // slot 48 → Task List 3, right-strip bottom cell
+    expect(payload.sampleCells[47]).toEqual({ sheetName: 'Ext. & Prep. Task List 3', cell: 'H16', value: '26B260601048-1' })
   })
 
   it('fills only the QC metadata and concentration row addresses required by the approved sheet', () => {

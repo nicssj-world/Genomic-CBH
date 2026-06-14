@@ -291,7 +291,6 @@ async function mapBatch(batch: RecordRow): Promise<BatchDetail> {
       sheetNumber: Number(sheet.sheet_number),
       workDate: nullableString(sheet.work_date),
       operatorText: nullableString(sheet.operator_text),
-      plasmaHandler: nullableString(sheet.plasma_handler),
       extractionLot: nullableString(sheet.extraction_lot),
       extractionExpiry: nullableString(sheet.extraction_expiry),
       libraryLot: nullableString(sheet.library_lot),
@@ -379,7 +378,6 @@ export async function updateSheet(
     .update({
       work_date: input.workDate,
       operator_text: input.operatorText,
-      plasma_handler: input.plasmaHandler,
       extraction_lot: input.extractionLot,
       extraction_expiry: input.extractionExpiry,
       library_lot: input.libraryLot,
@@ -885,10 +883,7 @@ export async function destroySampleStorageBox(boxId: string, destroyedByName: st
 }
 
 function isQcBatchReady(batch: BatchDetail) {
-  return batch.sheets.length === 3
-    && batch.sheets.every((sheet) => Boolean(sheet.finalizedAt))
-    && batch.slots.length === 48
-    && batch.slots.every((slot) => Boolean(slot.controlType || slot.sampleRunId))
+  return batch.sheets.some((sheet) => Boolean(sheet.finalizedAt))
 }
 
 async function mapQcSheet(row: RecordRow, importRows: RecordRow[] = [], uploadedByNames = new Map<string, string>()): Promise<QcSheet> {
@@ -973,7 +968,7 @@ export async function getQcSheet(qcSheetId: string) {
 }
 
 function assertQcSheetReady(qcSheet: QcSheet) {
-  if (!qcSheet.ready) throw new HttpError(409, 'Finalize all three Task Lists before editing or exporting QC measurements')
+  if (!qcSheet.ready) throw new HttpError(409, 'Finalize at least one Task List before editing or exporting QC measurements')
 }
 
 export async function updateQcSheet(

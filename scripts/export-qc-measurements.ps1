@@ -12,8 +12,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $excel = $null
 $workbook = $null
-$sourceSheet = $null
 $qcSheet = $null
+$taskSheets = @{}
 
 function Set-CellValue {
   param(
@@ -73,14 +73,27 @@ try {
   $excel.AutomationSecurity = 3
 
   $workbook = $excel.Workbooks.Open($TemplatePath, 0, $true)
-  $sourceSheet = $workbook.Worksheets.Item([string]$payload.sourceSheetName)
-  foreach ($row in $payload.sourceRows) {
-    Set-CellValue -Sheet $sourceSheet -Address "C$($row.sourceRow)" -Value ([string]$row.lnHalos)
-    Set-CellValue -Sheet $sourceSheet -Address "D$($row.sourceRow)" -Value ([string]$row.printedSampleId)
+
+  # The QC sheet pulls each Sample ID via formula from the Task List sheets'
+  # "Run" cells, so populate those cells before exporting.
+  foreach ($entry in $payload.sampleCells) {
+    $sheetName = [string]$entry.sheetName
+    if (-not $taskSheets.ContainsKey($sheetName)) {
+      $taskSheets[$sheetName] = $workbook.Worksheets.Item($sheetName)
+    }
+    Set-CellValue -Sheet $taskSheets[$sheetName] -Address ([string]$entry.cell) -Value ([string]$entry.value)
   }
 
   $qcSheet = $workbook.Worksheets.Item([string]$payload.selectedSheetName)
-  Set-CellValue -Sheet $qcSheet -Address 'D3' -Value ([string]$payload.metadata.workDate)
+  # Force Text on the work-date cell so "dd/mm/yyyy" prints verbatim instead of
+  # Excel reparsing it (e.g. 02/06/2026 -> "2/6/2026").
+  $workDateCell = $qcSheet.Range('D3')
+  try {
+    $workDateCell.NumberFormat = '@'
+    $workDateCell.Value2 = [string]$payload.metadata.workDate
+  } finally {
+    [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($workDateCell)
+  }
   Set-CellValue -Sheet $qcSheet -Address 'G3' -Value ([string]$payload.metadata.operatorText)
   foreach ($measurement in $payload.measurements) {
     Set-NumericCellValue -Sheet $qcSheet -Address "C$($measurement.targetRow)" -Value $measurement.concentration
@@ -92,8 +105,8 @@ try {
   if ($qcSheet) {
     [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($qcSheet)
   }
-  if ($sourceSheet) {
-    [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($sourceSheet)
+  foreach ($sheet in $taskSheets.Values) {
+    [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($sheet)
   }
   if ($workbook) {
     $workbook.Close($false)

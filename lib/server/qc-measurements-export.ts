@@ -11,7 +11,7 @@ import { queueExcelExport } from '@/lib/server/excel-export-queue'
 import { HttpError } from '@/lib/server/errors'
 
 const execFileAsync = promisify(execFile)
-const TEMPLATE_FILE_NAME = 'NIPT Experimental Task List-G50_TH_CBH.xlsm'
+const TEMPLATE_FILE_NAME = 'NIPT Task List 2026.xlsx'
 
 async function assertFileExists(filePath: string, message: string) {
   try {

@@ -12,7 +12,6 @@ param(
 $ErrorActionPreference = 'Stop'
 $excel = $null
 $workbook = $null
-$sourceSheet = $null
 $taskSheet = $null
 
 function Set-CellValue {
@@ -52,36 +51,40 @@ try {
   $excel.AutomationSecurity = 3
 
   $workbook = $excel.Workbooks.Open($TemplatePath, 0, $true)
-  $sourceSheet = $workbook.Worksheets.Item([string]$payload.sourceSheetName)
-  foreach ($row in $payload.sourceRows) {
-    Set-CellValue -Sheet $sourceSheet -Address "C$($row.sourceRow)" -Value ([string]$row.lnHalos)
-    Set-CellValue -Sheet $sourceSheet -Address "D$($row.sourceRow)" -Value ([string]$row.printedSampleId)
-  }
 
   $taskSheet = $workbook.Worksheets.Item([string]$payload.selectedSheetName)
-  Set-CellValue -Sheet $taskSheet -Address 'B4' -Value ([string]$payload.metadata.workDate)
+  # B4 carries a date number format; force Text so "dd/mm/yyyy" prints verbatim
+  # instead of Excel reparsing it (e.g. 02/06/2026 -> "2/6/2026 0:00").
+  $workDateCell = $taskSheet.Range('B4')
+  try {
+    $workDateCell.NumberFormat = '@'
+    $workDateCell.Value2 = [string]$payload.metadata.workDate
+  } finally {
+    [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($workDateCell)
+  }
   Set-CellValue -Sheet $taskSheet -Address 'B5' -Value ([string]$payload.metadata.taskLabel)
   Set-CellValue -Sheet $taskSheet -Address 'K5' -Value ([string]$payload.metadata.operatorText)
-  Set-CellValue -Sheet $taskSheet -Address 'B7' -Value ([string]$payload.metadata.s1Label)
-  Set-CellValue -Sheet $taskSheet -Address 'H7' -Value ([string]$payload.metadata.s2Label)
+  Set-CellValue -Sheet $taskSheet -Address 'B8' -Value ([string]$payload.metadata.s1Label)
+  Set-CellValue -Sheet $taskSheet -Address 'H8' -Value ([string]$payload.metadata.s2Label)
+  Set-CellValue -Sheet $taskSheet -Address 'B17' -Value ([string]$payload.metadata.extractionInfo)
+  Set-CellValue -Sheet $taskSheet -Address 'B18' -Value ([string]$payload.metadata.libraryInfo)
 
-  if ($payload.selectedSheetName -eq 'Ext. & Prep. Task List 3') {
-    Set-CellValue -Sheet $taskSheet -Address 'B16' -Value ([string]$payload.metadata.plasmaHandler)
-    Set-CellValue -Sheet $taskSheet -Address 'B17' -Value ([string]$payload.metadata.extractionInfo)
-    Set-CellValue -Sheet $taskSheet -Address 'B18' -Value ([string]$payload.metadata.libraryInfo)
-  } else {
-    Set-CellValue -Sheet $taskSheet -Address 'B16' -Value ([string]$payload.metadata.extractionInfo)
-    Set-CellValue -Sheet $taskSheet -Address 'B17' -Value ([string]$payload.metadata.libraryInfo)
+  foreach ($entry in $payload.sampleCells) {
+    Set-CellValue -Sheet $taskSheet -Address ([string]$entry.cell) -Value ([string]$entry.value)
   }
+
+  # Force the approved 2-page layout with page 2 starting at the "Library
+  # Preparation" section (row 32). Fit-to-pages scaling ignores manual page
+  # breaks, so use a fixed zoom together with an explicit horizontal break.
+  $taskSheet.PageSetup.Zoom = 85
+  $taskSheet.ResetAllPageBreaks()
+  [void]$taskSheet.HPageBreaks.Add($taskSheet.Range('A32'))
 
   $excel.CalculateFullRebuild()
   $taskSheet.ExportAsFixedFormat(0, $OutputPath, 0, $true, $false)
 } finally {
   if ($taskSheet) {
     [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($taskSheet)
-  }
-  if ($sourceSheet) {
-    [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($sourceSheet)
   }
   if ($workbook) {
     $workbook.Close($false)

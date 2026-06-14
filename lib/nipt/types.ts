@@ -60,7 +60,6 @@ export interface TaskSheet {
   sheetNumber: number
   workDate: string | null
   operatorText: string | null
-  plasmaHandler: string | null
   extractionLot: string | null
   extractionExpiry: string | null
   libraryLot: string | null

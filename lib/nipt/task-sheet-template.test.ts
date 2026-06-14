@@ -8,7 +8,6 @@ function sheet(sheetNumber: number, workDate: string): TaskSheet {
     sheetNumber,
     workDate,
     operatorText: 'Operator',
-    plasmaHandler: 'Plasma handler',
     extractionLot: 'EXT-01',
     extractionExpiry: '2026-12-31',
     libraryLot: 'LIB-01',
@@ -66,30 +65,28 @@ function batch(): BatchDetail {
 }
 
 describe('Task List workbook template payload', () => {
-  it('maps 48 slots into the source sheet rows and gives controls their fixed -1 suffix', () => {
+  it('maps the selected sheet 16 slots into Run cells and gives controls their fixed -1 suffix', () => {
     const payload = buildTaskSheetTemplatePayload(batch(), 1)
 
-    expect(payload.sourceRows).toHaveLength(48)
-    expect(payload.sourceRows[0]).toEqual({ sourceRow: 3, lnHalos: '26N120260601', printedSampleId: '26N120260601-1' })
-    expect(payload.sourceRows[24]).toEqual({ sourceRow: 27, lnHalos: '26N220260602', printedSampleId: '26N220260602-1' })
-    expect(payload.sourceRows[39]).toEqual({ sourceRow: 42, lnHalos: '26N320260603', printedSampleId: '26N320260603-1' })
-    expect(payload.sourceRows[1]).toEqual({
-      sourceRow: 4,
-      lnHalos: '26B260601002',
-      printedSampleId: '26B260601002-1',
-    })
+    expect(payload.sampleCells).toHaveLength(16)
+    // slot 1 (positive control) → left strip top cell
+    expect(payload.sampleCells[0]).toEqual({ cell: 'B9', value: '26N120260601-1' })
+    // slot 2 → next left-strip cell
+    expect(payload.sampleCells[1]).toEqual({ cell: 'B10', value: '26B260601002-1' })
+    // slot 9 → first right-strip cell
+    expect(payload.sampleCells[8]).toEqual({ cell: 'H9', value: '26B260601009-1' })
+    // slot 16 → last right-strip cell
+    expect(payload.sampleCells[15]).toEqual({ cell: 'H16', value: '26B260601016-1' })
   })
 
   it('selects the exact workbook sheet name and formats template metadata', () => {
     const payload = buildTaskSheetTemplatePayload(batch(), 3)
 
-    expect(payload.sourceSheetName).toBe('ใส่ข้อมูลตัวอย่าง ไม่ต้องปริ้น')
     expect(payload.selectedSheetName).toBe('Ext. & Prep. Task List 3')
     expect(payload.metadata).toEqual({
       workDate: '03/06/2026',
       taskLabel: 'Run001/2026',
       operatorText: 'Operator',
-      plasmaHandler: 'Plasma handler',
       extractionInfo: 'EXT-01 / 31/12/2026',
       libraryInfo: 'LIB-01 / 31/01/2027',
       s1Label: 'Run001 S1-3/3',
@@ -105,7 +102,7 @@ describe('Task List workbook template payload', () => {
 
     const payload = buildTaskSheetTemplatePayload(rerunBatch, 1)
 
-    expect(payload.sourceRows[0].printedSampleId).toBe('26N120260601-1')
-    expect(payload.sourceRows[1].printedSampleId).toBe('26B260601002-2')
+    expect(payload.sampleCells[0].value).toBe('26N120260601-1')
+    expect(payload.sampleCells[1].value).toBe('26B260601002-2')
   })
 })

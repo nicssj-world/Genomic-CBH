@@ -6,7 +6,6 @@ import { readJson, respond } from '@/lib/server/route'
 const schema = z.object({
   workDate: z.string().date().nullable().optional(),
   operatorText: z.string().max(200).nullable().optional(),
-  plasmaHandler: z.string().max(200).nullable().optional(),
   extractionLot: z.string().max(100).nullable().optional(),
   extractionExpiry: z.string().date().nullable().optional(),
   libraryLot: z.string().max(100).nullable().optional(),
