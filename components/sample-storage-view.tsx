@@ -3,6 +3,7 @@
 import { Fragment, useState } from 'react'
 import { Archive, CalendarClock, CheckCircle2, Clock3, FileDown, PackageOpen, Play, ShieldAlert, Trash2 } from 'lucide-react'
 import { STORAGE_BOX_CAPACITY, STORAGE_BOX_TYPE_LABEL, getStorageDueState, type StorageBoxType } from '@/lib/nipt/rules'
+import { printBoxLabel } from '@/lib/nipt/label-print'
 import type { SampleStorageData, StorageBox, StorageSlot } from '@/lib/nipt/types'
 import { api, Button, Card, Input, Notice, PageHeader } from '@/components/ui'
 
@@ -91,6 +92,13 @@ export function SampleStorageView({ initialData }: { initialData: SampleStorageD
     } catch (requestError) { showError(requestError) } finally { setBusy(false) }
   }
 
+  function handlePrintBoxLabel(box: StorageBox) {
+    const paired = data.boxes.find((b) => b.boxNumber === box.boxNumber && b.boxYear === box.boxYear && b.boxType !== box.boxType)
+    const bkBox = box.boxType === 'backup' ? box : paired
+    const bcBox = box.boxType === 'buffy_coat' ? box : paired
+    printBoxLabel(bkBox?.boxLabel ?? '-', bcBox?.boxLabel ?? '-')
+  }
+
   async function doDelete(boxId: string) {
     setBusy(true); setError(''); setMessage('')
     try {
@@ -171,7 +179,7 @@ export function SampleStorageView({ initialData }: { initialData: SampleStorageD
         </Card>
 
         {selectedBox
-          ? <StorageBoxDetail box={selectedBox} busy={busy} destroyedByName={destroyedByName} onDestroyedByNameChange={setDestroyedByName} onDestroy={destroyBox} onExport={exportPdf} onCheckout={setCheckoutSlot} onMove={doMove} onDelete={doDelete} />
+          ? <StorageBoxDetail box={selectedBox} busy={busy} destroyedByName={destroyedByName} onDestroyedByNameChange={setDestroyedByName} onDestroy={destroyBox} onExport={exportPdf} onCheckout={setCheckoutSlot} onMove={doMove} onDelete={doDelete} onPrintLabel={handlePrintBoxLabel} />
           : <Card className="flex min-h-[520px] items-center justify-center p-8 text-center"><div><Archive className="mx-auto size-10 text-[#adc0c3]" /><p className="mt-3 text-sm text-[#82979d]">ยังไม่มีกล่องจัดเก็บตัวอย่าง</p></div></Card>
         }
       </div>
@@ -218,7 +226,7 @@ export function SampleStorageView({ initialData }: { initialData: SampleStorageD
   )
 }
 
-function StorageBoxDetail({ box, busy, destroyedByName, onDestroyedByNameChange, onDestroy, onExport, onCheckout, onMove, onDelete }: {
+function StorageBoxDetail({ box, busy, destroyedByName, onDestroyedByNameChange, onDestroy, onExport, onCheckout, onMove, onDelete, onPrintLabel }: {
   box: StorageBox
   busy: boolean
   destroyedByName: string
@@ -228,6 +236,7 @@ function StorageBoxDetail({ box, busy, destroyedByName, onDestroyedByNameChange,
   onCheckout: (slot: StorageSlot) => void
   onMove: (sourceSlotId: string, targetSlotId: string) => void
   onDelete: (boxId: string) => void
+  onPrintLabel: (box: StorageBox) => void
 }) {
   const [dragSourceId, setDragSourceId] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -259,6 +268,7 @@ function StorageBoxDetail({ box, busy, destroyedByName, onDestroyedByNameChange,
             <p className="mt-1 text-xs text-[#789097]">จัดเก็บแล้ว {occupied}/{STORAGE_BOX_CAPACITY} ช่อง</p>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => onPrintLabel(box)}>Print Label</Button>
             <Button variant="secondary" disabled={busy} onClick={onExport}><FileDown className="size-4" /> Export PDF</Button>
             <Button variant="danger" disabled={busy} onClick={() => setConfirmDelete(true)}><Trash2 className="size-4" /> ลบกล่อง</Button>
             <BoxStatus box={box} />

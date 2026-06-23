@@ -1,9 +1,51 @@
 import type { SampleRow } from '@/lib/nipt/types'
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[char] ?? char))
+}
+
+export function printBoxLabel(bkLabel: string, bcLabel: string): void {
+  const backupLabel = escapeHtml(bkLabel)
+  const buffyCoatLabel = escapeHtml(bcLabel)
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    @page { size: 60mm 20mm; margin: 0; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', Courier, monospace; }
+    .sticker { width: 60mm; height: 20mm; display: flex; overflow: hidden; }
+    .half { width: 30mm; height: 20mm; display: flex; flex-direction: column; justify-content: center; gap: 1.5mm; padding: 2mm 1.5mm 2mm 8mm; }
+    .right { border-left: 0.5px dashed #555; padding-left: 5mm; }
+    .box { font-size: 7pt; font-weight: 900; letter-spacing: -0.02em; line-height: 1; white-space: nowrap; }
+    .type { font-size: 5pt; color: #333; white-space: nowrap; }
+  </style></head><body>
+    <div class="sticker">
+      <div class="half">
+        <div class="box">${backupLabel}</div>
+        <div class="type">Backup Box</div>
+      </div>
+      <div class="half right">
+        <div class="box">${buffyCoatLabel}</div>
+        <div class="type">Buffy Coat Box</div>
+      </div>
+    </div>
+  </body></html>`
+  const win = window.open('', '_blank')
+  if (!win) return
+  win.document.write(html)
+  win.document.close()
+  win.focus()
+  setTimeout(() => { win.print() }, 250)
+}
+
 function half(ln: string, name: string, isRight: boolean): string {
   return `<div class="${isRight ? 'right' : 'left'} half">
-    <div class="ln">${ln}</div>
-    <div class="name">${name}</div>
+    <div class="ln">${escapeHtml(ln)}</div>
+    <div class="name">${escapeHtml(name)}</div>
   </div>`
 }
 
