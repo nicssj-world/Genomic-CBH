@@ -12,7 +12,7 @@ export type PregnancyType = (typeof PREGNANCY_TYPES)[number]
 export const RUN_SUFFIX: Record<RunType, string> = {
   Normal: '-1',
   'Re-Library': '-2',
-  'Re-Sampling': '-3',
+  'Re-Sampling': 'R',
 }
 
 export const CONTROL_SLOTS = {

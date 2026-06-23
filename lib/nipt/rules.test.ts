@@ -50,7 +50,7 @@ describe('sample workflow formatting', () => {
   it('maps rerun suffixes without changing the B marker', () => {
     expect(formatRunSampleId('26B260601005', 'Normal')).toBe('26B260601005-1')
     expect(formatRunSampleId('26B260601005', 'Re-Library')).toBe('26B260601005-2')
-    expect(formatRunSampleId('26B260601005', 'Re-Sampling')).toBe('26B260601005-3')
+    expect(formatRunSampleId('26B260601005', 'Re-Sampling')).toBe('26B260601005R')
   })
 
   it('formats and highlights gestational age', () => {

@@ -356,7 +356,7 @@ numbers remain retired.
 | --- | --- |
 | `Normal` | `-1` |
 | `Re-Library` | `-2` |
-| `Re-Sampling` | `-3` |
+| `Re-Sampling` | `R` |
 
 Task List controls always use `-1`.
 
