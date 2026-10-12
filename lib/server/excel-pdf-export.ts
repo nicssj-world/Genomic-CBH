@@ -96,10 +96,10 @@ async function remoteExcelPdf(kind: ExportKind, payload: unknown, endpoint: stri
 }
 
 /** Exact approved Excel template rendering, local Windows or secure Windows worker. */
-export async function renderApprovedExcelPdf(kind: ExportKind, payload: unknown): Promise<Buffer> {
+export async function renderApprovedExcelPdf(kind: ExportKind, payload: unknown): Promise<Uint8Array<ArrayBuffer>> {
   const endpoint = process.env.NIPT_PDF_WORKER_URL?.trim()
-  if (endpoint) return remoteExcelPdf(kind, payload, endpoint)
-  if (process.platform === 'win32') return localExcelPdf(kind, payload)
+  if (endpoint) return new Uint8Array(await remoteExcelPdf(kind, payload, endpoint))
+  if (process.platform === 'win32') return new Uint8Array(await localExcelPdf(kind, payload))
   throw new HttpError(
     503,
     'PDF export on Vercel requires a secure Windows Excel worker. Configure NIPT_PDF_WORKER_URL and NIPT_PDF_WORKER_TOKEN.',
