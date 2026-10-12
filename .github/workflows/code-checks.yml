@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - fix/nipt-ln-on-tube-label-20261012
+      - fix/nipt-task-slot-remove-20261012
   pull_request:
 
 jobs:

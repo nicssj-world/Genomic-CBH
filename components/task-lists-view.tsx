@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CalendarDays, CheckCircle2, ClipboardList, Eye, FileDown, FlaskConical, Lock, Play, Plus, Printer, RotateCcw, Save, Zap } from 'lucide-react'
+import { CalendarDays, CheckCircle2, ClipboardList, Eye, FileDown, FlaskConical, Lock, Play, Plus, Printer, RotateCcw, Save, Trash2, Zap } from 'lucide-react'
 import type { Actor, BatchDetail, SampleRow, TaskSheet } from '@/lib/nipt/types'
 import { formatControlCode } from '@/lib/nipt/rules'
 import { printTubeLabels } from '@/lib/nipt/label-print'
@@ -9,7 +9,7 @@ import { api, Button, Card, Field, Input, Notice, PageHeader, Select } from '@/c
 
 export function TaskListsView({ actor, initialBatch, initialSamples }: { actor: Actor; initialBatch: BatchDetail | null; initialSamples: SampleRow[] }) {
   const [batch, setBatch] = useState(initialBatch)
-  const [samples] = useState(initialSamples)
+  const [samples, setSamples] = useState(initialSamples)
   const [selectedSheet, setSelectedSheet] = useState(1)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -18,6 +18,7 @@ export function TaskListsView({ actor, initialBatch, initialSamples }: { actor: 
   const [runLabel, setRunLabel] = useState(initialBatch?.runLabel ?? '')
 
   const [showPrintModal, setShowPrintModal] = useState(false)
+  const [pendingRemoval, setPendingRemoval] = useState<BatchSlot | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const assignedIds = useMemo(() => new Set(batch?.slots.map((slot) => slot.sampleRunId).filter(Boolean)), [batch])
   const queue = useMemo(() => samples.filter((sample) => sample.stage === 'Received' && !assignedIds.has(sample.runId)), [assignedIds, samples])
@@ -53,6 +54,28 @@ export function TaskListsView({ actor, initialBatch, initialSamples }: { actor: 
       const result = await api<{ sheet: number; slot: number; batch: BatchDetail }>(`/api/batches/${batch.id}/urgent`, { method: 'POST', body: JSON.stringify({ runId: urgentRunId }) })
       setBatch(result.batch); setSelectedSheet(result.sheet); setUrgentRunId(''); setMessage(`แทรกงานเร่งด่วนที่ slot ${result.slot} แล้ว`)
     } catch (requestError) { showError(requestError) } finally { setBusy(false) }
+  }
+
+  async function removeSlot() {
+    if (!batch || !pendingRemoval?.sampleRunId || !pendingRemoval.sample) return
+    setBusy(true); setError(''); setMessage('')
+    try {
+      const result = await api<{ batch: BatchDetail }>(
+        `/api/batches/${batch.id}/slots/${pendingRemoval.id}/remove`,
+        { method: 'POST', body: JSON.stringify({ runId: pendingRemoval.sampleRunId }) },
+      )
+      setBatch(result.batch)
+      setSamples((previous) => previous.map((item) =>
+        item.runId === pendingRemoval.sampleRunId ? { ...item, stage: 'Received' as const } : item,
+      ))
+      setMessage(`นำ LN ${pendingRemoval.sample.ln} ออกจาก Task List แล้ว · สามารถลบตัวอย่างได้ที่ทะเบียนคนไข้`)
+      setPendingRemoval(null)
+    } catch (requestError) {
+      setPendingRemoval(null)
+      showError(requestError)
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function saveMetadata(values: SheetForm) {
@@ -159,7 +182,7 @@ export function TaskListsView({ actor, initialBatch, initialSamples }: { actor: 
             </div>
             <div className="p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-[#173d50]">Plate positions 1-48</h2><p className="mt-0.5 text-xs text-[#83989e]">กำลังดู Task List {selectedSheet} · ตำแหน่ง {slots[0]?.slotNumber}-{slots.at(-1)?.slotNumber}</p></div><div className="flex gap-2"><Button variant="secondary" onClick={() => setShowPrintModal(true)} disabled={sheetPatients.length === 0}><Printer className="size-4" /> Print Labels</Button><Button variant="secondary" onClick={exportPdf} disabled={busy}><FileDown className="size-4" /> Export PDF</Button>{sheet?.finalizedAt ? actor.role === 'Admin' ? <Button variant="danger" onClick={unlock} disabled={busy}><RotateCcw className="size-4" /> Unlock</Button> : null : <Button onClick={finalize} disabled={busy}><Lock className="size-4" /> Finalize</Button>}</div></div>
-              <PlateGrid batch={batch} selectedSheet={selectedSheet} onPrint={(s) => printTubeLabels([s])} />
+              <PlateGrid batch={batch} selectedSheet={selectedSheet} onPrint={(s) => printTubeLabels([s])} onRemove={setPendingRemoval} canRemove={actor.role === 'Admin' && batch.status === 'assembling' && !sheet?.finalizedAt} disabled={busy} />
               {showPrintModal && <PrintModal patients={sheetPatients} taskList={selectedSheet} onClose={() => setShowPrintModal(false)} />}
             </div>
           </Card>
@@ -185,6 +208,29 @@ export function TaskListsView({ actor, initialBatch, initialSamples }: { actor: 
           </Card>
         </div>
       </div>
+      {pendingRemoval && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#173d50]/50 p-4" role="presentation">
+          <div role="dialog" aria-modal="true" aria-labelledby="remove-slot-title" className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl">
+            <h2 id="remove-slot-title" className="text-lg font-bold text-[#173d50]">นำตัวอย่างออกจาก Task List?</h2>
+            <p className="mt-2 text-sm leading-6 text-[#58747d]">
+              LN <strong>{pendingRemoval.sample?.ln}</strong> · LN Halos <strong>{pendingRemoval.sample?.lnHalos}</strong>
+            </p>
+            <p className="mt-1 text-sm text-[#58747d]">
+              Task List {pendingRemoval.sheetNumber} · Plate {pendingRemoval.platePosition} (Slot {pendingRemoval.slotNumber})
+            </p>
+            <p className="mt-3 rounded-lg bg-[#fff8ea] p-3 text-xs leading-5 text-[#856023]">
+              ระบบจะคืนตำแหน่งเป็นช่องว่าง และเปลี่ยน Stage กลับเป็น Received
+              โดยยังไม่ลบตัวอย่างออกจากทะเบียนคนไข้ หากต้องการลบถาวร ให้ไปที่ทะเบียนคนไข้หลังจากนำออกสำเร็จ
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="secondary" disabled={busy} onClick={() => setPendingRemoval(null)}>ยกเลิก</Button>
+              <Button variant="danger" disabled={busy} onClick={removeSlot}>
+                <Trash2 className="size-4" /> {busy ? 'กำลังนำออก...' : 'ยืนยันนำออก'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {previewUrl && <PreviewModal url={previewUrl} onClose={closePreview} />}
     </div>
   )
@@ -207,7 +253,7 @@ function PreviewModal({ url, onClose }: { url: string; onClose: () => void }) {
   )
 }
 
-function PlateGrid({ batch, selectedSheet, onPrint }: { batch: BatchDetail; selectedSheet: number; onPrint: (sample: SampleRow) => void }) {
+function PlateGrid({ batch, selectedSheet, onPrint, onRemove, canRemove, disabled }: { batch: BatchDetail; selectedSheet: number; onPrint: (sample: SampleRow) => void; onRemove: (slot: BatchSlot) => void; canRemove: boolean; disabled: boolean }) {
   return <div className="rounded-xl border border-[#dbe7e8] bg-[#f8fbfb] p-3">
     <div className="grid grid-cols-8 gap-1.5">{batch.slots.map((slot) => {
       const current = slot.sheetNumber === selectedSheet
@@ -215,7 +261,10 @@ function PlateGrid({ batch, selectedSheet, onPrint }: { batch: BatchDetail; sele
       return <div key={slot.id} className={`min-h-18 rounded-lg border p-2 transition ${current ? control ? 'border-[#e4c180] bg-[#fff8e9]' : slot.sample ? 'border-[#aad7d2] bg-white shadow-sm' : 'border-[#d4e1e2] bg-white' : 'border-[#e2ebec] bg-[#f2f6f6] opacity-45'}`}>
         <div className="flex items-center justify-between gap-1"><span className="mono text-[10px] font-bold text-[#789097]">{String(slot.slotNumber).padStart(2, '0')}</span><span className="mono text-[10px] font-bold text-[#087f79]">{slot.platePosition}</span></div>
         <p className={`mono mt-2 whitespace-nowrap text-[8px] leading-tight font-bold tracking-[-0.06em] ${control ? 'text-[#a66a15]' : slot.sample ? 'text-[#355d67]' : 'text-[#b3c1c4]'}`}>{control ? `${slot.controlType} ctrl` : slot.sample?.runSampleId ?? 'EMPTY'}</p>
-        {current && !control && slot.sample ? <button onClick={() => onPrint(slot.sample!)} title={`พิมพ์ label: ${slot.sample.lnHalos}`} className="mt-1.5 flex w-full items-center justify-center rounded py-0.5 text-[#087f79] transition hover:bg-[#daf0ee]"><Printer className="size-2.5" /></button> : null}
+        {current && !control && slot.sample ? <div className="mt-1.5 flex items-center gap-1">
+          <button disabled={disabled} onClick={() => onPrint(slot.sample!)} title={`พิมพ์ label: ${slot.sample.lnHalos}`} aria-label={`พิมพ์ฉลาก ${slot.sample.lnHalos}`} className="flex flex-1 items-center justify-center rounded py-1 text-[#087f79] transition hover:bg-[#daf0ee]"><Printer className="size-3" /></button>
+          {canRemove && <button disabled={disabled} onClick={() => onRemove(slot)} title={`นำ LN ${slot.sample.ln} ออกจาก Task List`} aria-label={`นำ LN ${slot.sample.ln} ออกจาก Task List`} className="flex flex-1 items-center justify-center rounded py-1 text-[#b33d4b] transition hover:bg-[#fff0f2]"><Trash2 className="size-3" /></button>}
+        </div> : null}
       </div>
     })}</div>
   </div>

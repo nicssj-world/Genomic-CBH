@@ -251,6 +251,23 @@ export async function deleteSample(sampleId: string, actor: Actor) {
   return { id: sampleId, ln: sample.ln, lnHalos: sample.lnHalos }
 }
 
+
+/**
+ * Removes the assignment, not the patient record. A transaction in Postgres
+ * ensures the Plate slot and sample Stage never diverge during the removal.
+ */
+export async function removeTaskSlotSample(batchId: string, slotId: string, runId: string, actor: Actor) {
+  if (actor.role !== 'Admin') throw new HttpError(403, 'Admin permission required')
+  const { data, error } = await getAdminClient().rpc('remove_nipt_task_slot_sample', {
+    p_batch: batchId,
+    p_slot: slotId,
+    p_run: runId,
+    p_actor: actor.id,
+  })
+  if (error) throw new HttpError(409, error.message || 'ไม่สามารถนำตัวอย่างออกจาก Task List ได้')
+  return { removed: data, batch: await getBatch(batchId) }
+}
+
 async function mapBatch(batch: RecordRow): Promise<BatchDetail> {
   const admin = getAdminClient()
   const batchId = asString(batch.id)

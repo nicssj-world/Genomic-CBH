@@ -24,6 +24,7 @@ export function PatientsView({ actor, initialSamples, initialSelectedId }: { act
   const [selectedId, setSelectedId] = useState(initialSelectedId ?? '')
   const [search, setSearch] = useState('')
   const [notice, setNotice] = useState('')
+  const [noticeTone, setNoticeTone] = useState<'success' | 'warning' | 'danger'>('success')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
   const selected = samples.find((sample) => sample.id === selectedId) ?? null
@@ -47,21 +48,39 @@ export function PatientsView({ actor, initialSamples, initialSelectedId }: { act
   }
 
   async function deleteSelected() {
-    const count = selectedIds.size
-    if (!window.confirm(`ยืนยันการลบ ${count} รายการ?\nLN Halos ที่ลบจะไม่ถูกนำกลับมาใช้ซ้ำ`)) return
+    const picked = samples.filter((sample) => selectedIds.has(sample.id))
+    if (!picked.length) return
+    if (!window.confirm(`ยืนยันการลบ ${picked.length} รายการ?\nLN Halos ที่ลบจะไม่ถูกนำกลับมาใช้ซ้ำ`)) return
     setDeleting(true)
+    setNotice('')
     try {
-      await Promise.all([...selectedIds].map((id) => api(`/api/samples/${id}`, { method: 'DELETE' })))
-      setSelectedIds(new Set())
+      const outcomes = await Promise.allSettled(picked.map((sample) => api(`/api/samples/${sample.id}`, { method: 'DELETE' })))
+      const failed = picked.flatMap((sample, index) => {
+        const outcome = outcomes[index]
+        return outcome.status === 'rejected'
+          ? [{ sample, reason: outcome.reason instanceof Error ? outcome.reason.message : 'ลบไม่สำเร็จ' }]
+          : []
+      })
+      const completed = picked.length - failed.length
+      setSelectedIds(new Set(failed.map((item) => item.sample.id)))
       await refresh('')
-      setNotice(`ลบ ${count} รายการแล้ว`)
-    } catch { setNotice('ลบบางรายการไม่สำเร็จ') } finally { setDeleting(false) }
+      if (failed.length) {
+        setNoticeTone(completed ? 'warning' : 'danger')
+        setNotice(`ลบสำเร็จ ${completed} รายการ · ลบไม่ได้ ${failed.length} รายการ — ${failed.slice(0, 5).map(({ sample, reason }) => `LN ${sample.ln}: ${reason}`).join(' | ')}${failed.length > 5 ? ' (ดูรายการที่ยังเลือกอยู่เพิ่มเติม)' : ''}`)
+      } else {
+        setNoticeTone('success')
+        setNotice(`ลบ ${completed} รายการแล้ว`)
+      }
+    } catch (requestError) {
+      setNoticeTone('danger')
+      setNotice(requestError instanceof Error ? requestError.message : 'โหลดทะเบียนคนไข้หลังลบไม่สำเร็จ กรุณารีเฟรช')
+    } finally { setDeleting(false) }
   }
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-5">
       <PageHeader eyebrow="Patient registry" title="ทะเบียนคนไข้" description="ค้นหา แก้ข้อมูล workflow และจัดการไฟล์ผลตรวจ PDF ตาม LN" />
-      {notice ? <Notice tone="success">{notice}</Notice> : null}
+      {notice ? <Notice tone={noticeTone}>{notice}</Notice> : null}
       <Card>
         <div className="flex flex-col gap-3 border-b border-[#e0e9ea] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div><h2 className="font-bold text-[#173d50]">Samples</h2><p className="mt-0.5 text-xs text-[#80959b]">{samples.length} รายการในระบบ</p></div>
@@ -96,7 +115,7 @@ export function PatientsView({ actor, initialSamples, initialSelectedId }: { act
         </div>
         {!filtered.length ? <p className="px-4 py-10 text-center text-sm text-[#91a4a9]">ไม่พบรายการที่ค้นหา</p> : null}
       </Card>
-      {selected ? <PatientDrawer actor={actor} sample={selected} onClose={() => setSelectedId('')} onDelete={async () => { await refresh(''); setNotice('ลบตัวอย่างแล้ว · LN Halos เดิมจะไม่ถูกนำกลับมาใช้ซ้ำ') }} onRefresh={async (message) => { await refresh(selected.id); setNotice(message) }} /> : null}
+      {selected ? <PatientDrawer actor={actor} sample={selected} onClose={() => setSelectedId('')} onDelete={async () => { await refresh(''); setNoticeTone('success'); setNotice('ลบตัวอย่างแล้ว · LN Halos เดิมจะไม่ถูกนำกลับมาใช้ซ้ำ') }} onRefresh={async (message) => { await refresh(selected.id); setNoticeTone('success'); setNotice(message) }} /> : null}
     </div>
   )
 }
