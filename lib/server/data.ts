@@ -268,7 +268,7 @@ export async function removeTaskSlotSample(batchId: string, slotId: string, runI
   return { removed: data, batch: await getBatch(batchId) }
 }
 
-async function mapBatch(batch: RecordRow): Promise<BatchDetail> {
+async function mapBatch(batch: RecordRow, preloadedSamples?: SampleRow[]): Promise<BatchDetail> {
   const admin = getAdminClient()
   const batchId = asString(batch.id)
   const [{ data: sheetData, error: sheetError }, { data: slotData, error: slotError }] = await Promise.all([
@@ -280,21 +280,13 @@ async function mapBatch(batch: RecordRow): Promise<BatchDetail> {
   const sheets = (sheetData ?? []) as RecordRow[]
   const slots = (slotData ?? []) as RecordRow[]
   const finalizedMap = await getNameMap(ids(sheets, 'finalized_by'))
-  const runIds = ids(slots, 'sample_run_id')
-  let sampleMap = new Map<string, SampleRow>()
-  if (runIds.length) {
-    const { data: runData, error: runError } = await admin.from('nipt_sample_runs').select('id,sample_id').in('id', runIds)
-    fail(runError)
-    const runRows = (runData ?? []) as RecordRow[]
-    const allSamples = await listSamples({ limit: 1000 })
-    const bySampleId = new Map(allSamples.map((sample) => [sample.id, sample]))
-    sampleMap = new Map(
-      runRows.flatMap((run): [string, SampleRow][] => {
-        const sample = bySampleId.get(asString(run.sample_id))
-        return sample ? [[asString(run.id), sample]] : []
-      }),
-    )
-  }
+  const runIds = new Set(ids(slots, 'sample_run_id'))
+  // A SampleRow already carries its active runId. Avoid a second sample fetch
+  // and redundant sample_run -> sample_id lookup when the page supplies rows.
+  const availableSamples = runIds.size ? (preloadedSamples ?? await listSamples({ limit: 1000 })) : []
+  const sampleMap = new Map(
+    availableSamples.filter((sample) => runIds.has(sample.runId)).map((sample) => [sample.runId, sample]),
+  )
 
   return {
     id: batchId,
@@ -325,6 +317,19 @@ async function mapBatch(batch: RecordRow): Promise<BatchDetail> {
       sampleRunId: nullableString(slot.sample_run_id),
       sample: sampleMap.get(asString(slot.sample_run_id)) ?? null,
     })),
+  }
+}
+
+/** Fetch Task List's batch and queue concurrently, using one sample snapshot. */
+export async function getTaskListsWorkspace() {
+  const [batchResult, samples] = await Promise.all([
+    getAdminClient().from('nipt_batches').select('*').eq('status', 'assembling').maybeSingle(),
+    listSamples({ limit: 1000 }),
+  ])
+  fail(batchResult.error)
+  return {
+    batch: batchResult.data ? await mapBatch(batchResult.data as RecordRow, samples) : null,
+    samples,
   }
 }
 

@@ -1,12 +1,15 @@
 import 'server-only'
 
 import { redirect } from 'next/navigation'
+import { cache } from 'react'
 import type { Actor } from '@/lib/nipt/types'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { HttpError } from '@/lib/server/errors'
 
-export async function getActor(): Promise<Actor | null> {
+// Shared only within a React server render request: no cross-user/session caching.
+// Proxy still validates the JWT independently; requireActor/requireAdmin remain enforced.
+export const getActor = cache(async (): Promise<Actor | null> => {
   const supabase = await createClient()
   const {
     data: { user },
@@ -26,7 +29,7 @@ export async function getActor(): Promise<Actor | null> {
     displayName: data.display_name,
     role: data.role,
   }
-}
+})
 
 export async function requireActor() {
   const actor = await getActor()
