@@ -1,0 +1,17 @@
+name: PDF worker compatibility
+on:
+  push:
+    branches: [fix/vercel-excel-pdf-worker-20261012]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: node --check scripts/pdf-export-worker.mjs
+      - run: npx tsc --noEmit
+      - run: npm test
