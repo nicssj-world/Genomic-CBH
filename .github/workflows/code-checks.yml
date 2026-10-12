@@ -1,0 +1,21 @@
+name: Genomic CBH code checks
+
+on:
+  push:
+    branches:
+      - main
+      - fix/nipt-ln-on-tube-label-20261012
+  pull_request:
+
+jobs:
+  windows-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
