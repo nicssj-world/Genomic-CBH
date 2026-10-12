@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { CalendarDays, CheckCircle2, ClipboardList, Eye, FileDown, FlaskConical, Lock, Play, Plus, Printer, RotateCcw, Save, Trash2, Zap } from 'lucide-react'
-import type { Actor, BatchDetail, SampleRow, TaskSheet } from '@/lib/nipt/types'
+import type { Actor, BatchDetail, BatchSlot, SampleRow, TaskSheet } from '@/lib/nipt/types'
 import { formatControlCode } from '@/lib/nipt/rules'
 import { printTubeLabels } from '@/lib/nipt/label-print'
 import { api, Button, Card, Field, Input, Notice, PageHeader, Select } from '@/components/ui'
