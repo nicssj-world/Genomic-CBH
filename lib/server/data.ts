@@ -244,7 +244,7 @@ export async function deleteSample(sampleId: string, actor: Actor) {
   if (resultCount) throw new HttpError(409, 'ลบไม่ได้: ตัวอย่างมี Result PDF แล้ว')
   if (storageSlotCount) throw new HttpError(409, 'ลบไม่ได้: ตัวอย่างถูกจัดเก็บแล้ว')
 
-  // Keep nipt_daily_sequences untouched so a deleted LN Halos value stays retired.
+  // Do not decrement nipt_monthly_sequences when deleting a sample: retired numbers stay retired.
   const { error } = await admin.from('nipt_samples').delete().eq('id', sampleId)
   fail(error)
   await writeAudit(actor, 'sample.delete', 'sample', sampleId, { ln: sample.ln, lnHalos: sample.lnHalos })
