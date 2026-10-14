@@ -97,8 +97,21 @@ BEGIN
       'new_ln_halos',new_code,'month','2026-10','authority','OWNER_2026_10_14')
   FROM monthly_ln_halos_oct2026_map WHERE old_code<>new_code;
 
+  -- UNIQUE(ln_halos) is immediate; ranges overlap (old 011..032, new 011..042).
+  -- Stage changed rows in transaction-private unique placeholders, then install final codes.
+  -- No other session can observe placeholders before COMMIT.
+  UPDATE public.nipt_samples s SET ln_halos='MIG_20261014_'||replace(s.id::text,'-','')
+  FROM monthly_ln_halos_oct2026_map m
+  WHERE s.id=m.id AND m.old_code<>m.new_code AND s.ln_halos=m.old_code;
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  IF v_affected <> (SELECT count(*) FROM monthly_ln_halos_oct2026_map WHERE old_code<>new_code) THEN
+    RAISE EXCEPTION 'MONTHLY_LN_HALOS_STAGING_COUNT_MISMATCH';
+  END IF;
+
   UPDATE public.nipt_samples s SET ln_halos=m.new_code
-  FROM monthly_ln_halos_oct2026_map m WHERE s.id=m.id AND s.ln_halos<>m.new_code;
+  FROM monthly_ln_halos_oct2026_map m
+  WHERE s.id=m.id AND m.old_code<>m.new_code
+    AND s.ln_halos='MIG_20261014_'||replace(s.id::text,'-','');
   GET DIAGNOSTICS v_affected = ROW_COUNT;
   IF v_affected <> (SELECT count(*) FROM monthly_ln_halos_oct2026_map WHERE old_code<>new_code)
       OR EXISTS (
