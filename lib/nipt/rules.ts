@@ -64,7 +64,7 @@ export function formatBangkokIsoDate(date = new Date()) {
 
 export function formatLnHalos(sequence: number, date = new Date()) {
   if (!Number.isInteger(sequence) || sequence < 1 || sequence > 999) {
-    throw new Error('LN Halos daily sequence must be between 1 and 999')
+    throw new Error('LN Halos monthly sequence must be between 1 and 999')
   }
   const { year, month, day } = formatBangkokDateParts(date)
   return `${year.slice(-2)}B${year.slice(-2)}${month}${day}${String(sequence).padStart(3, '0')}`
