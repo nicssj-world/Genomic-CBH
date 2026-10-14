@@ -13,13 +13,20 @@ import {
 } from './rules'
 
 describe('LN Halos formatting', () => {
-  it('uses the Bangkok calendar date and a zero-padded daily sequence', () => {
+  it('uses the Bangkok calendar date and a zero-padded monthly sequence', () => {
     expect(formatLnHalos(5, new Date('2026-05-31T17:00:00.000Z'))).toBe('26B260601005')
   })
 
   it('changes the date portion when the Bangkok day changes', () => {
     expect(formatLnHalos(5, new Date('2026-05-31T16:59:59.000Z'))).toBe('26B260531005')
     expect(formatLnHalos(1, new Date('2026-05-31T17:00:00.000Z'))).toBe('26B260601001')
+  })
+
+  it('keeps the NNN sequence across days and restarts on the next Bangkok month', () => {
+    expect(formatLnHalos(10, new Date('2026-10-12T12:00:00+07:00'))).toBe('26B261012010')
+    expect(formatLnHalos(11, new Date('2026-10-14T12:00:00+07:00'))).toBe('26B261014011')
+    expect(formatLnHalos(42, new Date('2026-10-31T23:59:59+07:00'))).toBe('26B261031042')
+    expect(formatLnHalos(1, new Date('2026-11-01T00:00:00+07:00'))).toBe('26B261101001')
   })
 
   it('rejects sequences outside the three-digit range', () => {
