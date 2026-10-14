@@ -82,16 +82,32 @@ async function getRevisionMap(sampleIds: string[]) {
   )
 }
 
-export async function listSamples(options: { search?: string; limit?: number } = {}) {
+function normalizedSampleSearch(raw?: string) {
+  const trimmed = raw?.trim().slice(0, 80) ?? ''
+  // PostgREST or() grammar: remove characters that could split filters or change the LIKE pattern.
+  return trimmed.replace(/[%,().*\\]/g, '').trim()
+}
+
+function sampleSearchFilter(search: string) {
+  return 'ln.ilike.%' + search + '%,ln_halos.ilike.%' + search + '%,hn.ilike.%' + search + '%,patient_name.ilike.%' + search + '%'
+}
+
+export async function listSamples(options: { search?: string; limit?: number; offset?: number } = {}) {
   const admin = getAdminClient()
-  let query = admin.from('nipt_samples').select('*').order('imported_at', { ascending: false }).limit(options.limit ?? 250)
-  const search = options.search?.trim()
-  if (search) query = query.or(`ln.ilike.%${search}%,hn.ilike.%${search}%,patient_name.ilike.%${search}%`)
+  let query = admin.from('nipt_samples').select('*').order('imported_at', { ascending: false }).order('id', { ascending: false })
+    .range(options.offset ?? 0, (options.offset ?? 0) + (options.limit ?? 250) - 1)
+  const search = normalizedSampleSearch(options.search)
+  if (search) query = query.or(sampleSearchFilter(search))
   const { data: sampleData, error: sampleError } = await query
   fail(sampleError)
   const samples = (sampleData ?? []) as RecordRow[]
   if (!samples.length) return []
 
+  return hydrateSamples(samples)
+}
+
+async function hydrateSamples(samples: RecordRow[]): Promise<SampleRow[]> {
+  if (!samples.length) return []
   const sampleIds = ids(samples, 'id')
   const { data: runData, error: runError } = await admin
     .from('nipt_sample_runs')
@@ -110,6 +126,7 @@ export async function listSamples(options: { search?: string; limit?: number } =
     .in('sample_id', sampleIds)
   if (markerError && !['42P01', 'PGRST205'].includes(markerError.code ?? '')) fail(markerError)
   const markedIds = new Set((markerRows ?? []).map((marker) => marker.sample_id))
+
 
   return samples.flatMap((sample): SampleRow[] => {
     const run = runMap.get(asString(sample.id))
@@ -144,9 +161,62 @@ export async function listSamples(options: { search?: string; limit?: number } =
 }
 
 export async function getSample(sampleId: string) {
-  const sample = (await listSamples({ limit: 1000 })).find((row) => row.id === sampleId)
-  if (!sample) throw new HttpError(404, 'Sample not found')
+  const { data, error } = await getAdminClient().from('nipt_samples').select('*').eq('id', sampleId).maybeSingle()
+  fail(error)
+  if (!data) throw new HttpError(404, 'Sample not found')
+  const [sample] = await hydrateSamples([data as RecordRow])
+  if (!sample) throw new HttpError(404, 'Sample has no active run')
   return sample
+}
+
+export interface RegistryPrintMarker {
+  sampleId: string
+  ln: string
+  lnHalos: string
+}
+
+export interface RegistryPage {
+  samples: SampleRow[]
+  total: number
+  page: number
+  pageSize: number
+  marker: RegistryPrintMarker | null
+}
+
+export async function getRegistryPrintMarker(): Promise<RegistryPrintMarker | null> {
+  const admin = getAdminClient()
+  const { data, error } = await admin.from('genomic_label_print_marker')
+    .select('sample_id').eq('singleton_id', true).maybeSingle()
+  fail(error)
+  if (!data?.sample_id) return null
+  const { data: sample, error: sampleError } = await admin.from('nipt_samples')
+    .select('id,ln,ln_halos').eq('id', data.sample_id).maybeSingle()
+  fail(sampleError)
+  if (!sample) return null
+  return { sampleId: sample.id, ln: sample.ln, lnHalos: sample.ln_halos }
+}
+
+export async function listRegistrySamples(options: { page?: number; search?: string } = {}): Promise<RegistryPage> {
+  const pageSize = 50
+  const requestedPage = options.page && Number.isSafeInteger(options.page) ? Math.max(1, options.page) : 1
+  const search = normalizedSampleSearch(options.search)
+  let countQuery = getAdminClient().from('nipt_samples').select('id', { count: 'exact', head: true })
+  if (search) countQuery = countQuery.or(sampleSearchFilter(search))
+  const [countResult, marker] = await Promise.all([countQuery, getRegistryPrintMarker()])
+  fail(countResult.error)
+  const total = countResult.count ?? 0
+  const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)))
+  const samples = await listSamples({ search, limit: pageSize, offset: (page - 1) * pageSize })
+  return { samples, total, page, pageSize, marker }
+}
+
+export async function setRegistryPrintMarker(sampleId: string | null, actor: Actor): Promise<RegistryPrintMarker | null> {
+  const { error } = await getAdminClient().rpc('set_genomic_label_print_marker', {
+    p_sample: sampleId,
+    p_actor: actor.id,
+  })
+  fail(error)
+  return getRegistryPrintMarker()
 }
 
 export async function registerSample(ln: string, actor: Actor) {

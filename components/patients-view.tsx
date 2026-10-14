@@ -1,11 +1,12 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
-import { Download, FileClock, FileText, Printer, Search, Star, Trash2, Upload, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { BookmarkCheck, BookmarkPlus, Download, FileClock, FileText, Printer, RefreshCcw, Search, Trash2, Upload, X } from 'lucide-react'
 import type { Actor, SampleRow } from '@/lib/nipt/types'
+import type { RegistryPage, RegistryPrintMarker } from '@/lib/server/data'
+import { PrintLabelsModal } from '@/components/print-labels-modal'
 import { PREGNANCY_TYPES, RUN_TYPES, STAGES, formatGestationalAge, isGestationalAgeComplete, isGestationalAgeWarning, type PregnancyType, type RunType, type SampleStage } from '@/lib/nipt/rules'
 import { printTubeLabels } from '@/lib/nipt/label-print'
-import { latestSampleIdsByBangkokDay } from '@/lib/nipt/intake-day'
 import { api, Button, Card, Field, Input, Notice, PageHeader, RunBadge, Select, StageBadge } from '@/components/ui'
 
 type Revision = {
@@ -20,26 +21,72 @@ type Revision = {
   voidReason: string | null
 }
 
-export function PatientsView({ actor, initialSamples, initialSelectedId }: { actor: Actor; initialSamples: SampleRow[]; initialSelectedId?: string }) {
-  const [samples, setSamples] = useState(initialSamples)
+export function PatientsView({ actor, initialPage, initialSelectedId, initialSelectedSample }: {
+  actor: Actor; initialPage: RegistryPage; initialSelectedId?: string; initialSelectedSample: SampleRow | null
+}) {
+  const [registry, setRegistry] = useState(initialPage)
+  const [extraSelected, setExtraSelected] = useState(initialSelectedSample)
   const [selectedId, setSelectedId] = useState(initialSelectedId ?? '')
   const [search, setSearch] = useState('')
   const [notice, setNotice] = useState('')
   const [noticeTone, setNoticeTone] = useState<'success' | 'warning' | 'danger'>('success')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
-  const [markingId, setMarkingId] = useState<string | null>(null)
-  const latestDailyIds = useMemo(() => latestSampleIdsByBangkokDay(samples), [samples])
-  const selected = samples.find((sample) => sample.id === selectedId) ?? null
-  const filtered = useMemo(() => {
-    const key = search.trim().toLowerCase()
-    return key ? samples.filter((sample) => [sample.ln, sample.lnHalos, sample.hn, sample.patientName].some((value) => value?.toLowerCase().includes(key))) : samples
-  }, [samples, search])
+  const [markBusy, setMarkBusy] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [showPrintModal, setShowPrintModal] = useState(false)
+  const requestSerial = useRef(0)
+  const firstSearch = useRef(true)
+  const { samples, total, page, pageSize, marker } = registry
+  const filtered = samples
+  const selected = samples.find((sample) => sample.id === selectedId) ?? (extraSelected?.id === selectedId ? extraSelected : null)
+  const chosen = samples.filter((sample) => selectedIds.has(sample.id))
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const allSelected = filtered.length > 0 && filtered.every((sample) => selectedIds.has(sample.id))
+
+  const loadPage = useCallback(async (nextPage: number, query: string) => {
+    const requestId = ++requestSerial.current
+    setLoading(true)
+    try {
+      const result = await api<RegistryPage>('/api/registry', { method: 'POST', body: JSON.stringify({ page: nextPage, search: query }) })
+      if (requestId !== requestSerial.current) return
+      setRegistry(result)
+      setSelectedIds(new Set())
+      setShowPrintModal(false)
+    } catch (error) {
+      if (requestId !== requestSerial.current) return
+      setNoticeTone('danger')
+      setNotice(error instanceof Error ? error.message : 'โหลดทะเบียนไม่สำเร็จ')
+    } finally { if (requestId === requestSerial.current) setLoading(false) }
+  }, [])
+
+  useEffect(() => {
+    if (firstSearch.current) { firstSearch.current = false; return }
+    const timer = window.setTimeout(() => { void loadPage(1, search) }, 350)
+    return () => window.clearTimeout(timer)
+  }, [search, loadPage])
 
   async function refresh(keepId = selectedId) {
-    const response = await api<{ samples: SampleRow[] }>('/api/samples')
-    setSamples(response.samples)
+    await loadPage(page, search)
     setSelectedId(keepId)
+    if (keepId && extraSelected?.id === keepId) {
+      try { setExtraSelected(await api<SampleRow>('/api/samples/' + encodeURIComponent(keepId))) }
+      catch { setExtraSelected(null) }
+    }
+  }
+
+  async function setMark(sampleId: string | null) {
+    if (markBusy) return
+    setMarkBusy(true)
+    try {
+      const result = await api<{ marker: RegistryPrintMarker | null }>('/api/registry/mark', { method: 'PATCH', body: JSON.stringify({ sampleId }) })
+      setRegistry((previous) => ({ ...previous, marker: result.marker }))
+      setNoticeTone('success')
+      setNotice(result.marker ? 'Mark จุดเริ่มพิมพ์แล้ว (ทั้งทะเบียนมี Mark เดียว)' : 'ยกเลิก Mark แล้ว')
+    } catch (error) {
+      setNoticeTone('danger')
+      setNotice(error instanceof Error ? error.message : 'บันทึก Mark ไม่สำเร็จ')
+    } finally { setMarkBusy(false) }
   }
 
   function toggleSelect(id: string) {
@@ -47,27 +94,7 @@ export function PatientsView({ actor, initialSamples, initialSelectedId }: { act
   }
 
   function toggleSelectAll() {
-    setSelectedIds(selectedIds.size === filtered.length && filtered.length > 0 ? new Set() : new Set(filtered.map((s) => s.id)))
-  }
-
-  async function toggleDayMarker(sample: SampleRow) {
-    setMarkingId(sample.id)
-    setNotice('')
-    try {
-      const marked = !sample.isDayEndMarker
-      await api(`/api/samples/${sample.id}/day-end`, {
-        method: 'POST',
-        body: JSON.stringify({ marked }),
-      })
-      await refresh()
-      setNoticeTone('success')
-      setNotice(marked ? `ทำเครื่องหมายตัวอย่างสุดท้ายของวันสำหรับ LN ${sample.ln} แล้ว` : `ยกเลิกเครื่องหมายตัวอย่างสุดท้ายของวันสำหรับ LN ${sample.ln} แล้ว`)
-    } catch (error) {
-      setNoticeTone('danger')
-      setNotice(error instanceof Error ? error.message : 'เปลี่ยนเครื่องหมายไม่สำเร็จ')
-    } finally {
-      setMarkingId(null)
-    }
+    setSelectedIds(allSelected ? new Set() : new Set(filtered.map((s) => s.id)))
   }
 
   async function deleteSelected() {
@@ -85,8 +112,8 @@ export function PatientsView({ actor, initialSamples, initialSelectedId }: { act
           : []
       })
       const completed = picked.length - failed.length
-      setSelectedIds(new Set(failed.map((item) => item.sample.id)))
       await refresh('')
+      setSelectedIds(new Set(failed.map((item) => item.sample.id)))
       if (failed.length) {
         setNoticeTone(completed ? 'warning' : 'danger')
         setNotice(`ลบสำเร็จ ${completed} รายการ · ลบไม่ได้ ${failed.length} รายการ — ${failed.slice(0, 5).map(({ sample, reason }) => `LN ${sample.ln}: ${reason}`).join(' | ')}${failed.length > 5 ? ' (ดูรายการที่ยังเลือกอยู่เพิ่มเติม)' : ''}`)
@@ -106,38 +133,55 @@ export function PatientsView({ actor, initialSamples, initialSelectedId }: { act
       {notice ? <Notice tone={noticeTone}>{notice}</Notice> : null}
       <Card>
         <div className="flex flex-col gap-3 border-b border-[#e0e9ea] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div><h2 className="font-bold text-[#173d50]">Samples</h2><p className="mt-0.5 text-xs text-[#80959b]">{samples.length} รายการในระบบ · ดาวสีเหลือง = ตัวอย่างสุดท้ายของวัน (ทำเครื่องหมายด้วยเจ้าหน้าที่)</p></div>
-          <div className="relative w-full sm:w-80"><Search className="absolute left-3 top-2.5 size-4 text-[#8ca3a8]" /><Input value={search} onChange={(event) => setSearch(event.target.value)} className="pl-9" placeholder="ค้นหา LN, LN Halos, HN หรือชื่อ" /></div>
+          <div><h2 className="font-bold text-[#173d50]">Samples</h2><p className="mt-0.5 text-xs text-[#80959b]">{total} รายการในทะเบียน · 50 รายการต่อหน้า</p></div>
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto"><div className="relative w-full sm:w-80"><Search className="absolute left-3 top-2.5 size-4 text-[#8ca3a8]" /><Input value={search} onChange={(event) => setSearch(event.target.value)} className="pl-9" placeholder="ค้นหาทั้งทะเบียน LN, LN Halos, HN หรือชื่อ" /></div><Button variant="secondary" disabled={loading} onClick={() => void loadPage(page, search)}><RefreshCcw className="size-4" /> รีเฟรช</Button></div>
         </div>
-        {actor.role === 'Admin' && selectedIds.size > 0 && (
-          <div className="flex items-center justify-between border-b border-[#f0d8d8] bg-[#fff8f8] px-4 py-2.5">
-            <span className="text-sm font-bold text-[#a83541]">{selectedIds.size} รายการที่เลือก</span>
-            <div className="flex gap-2">
-              <Button variant="secondary" className="px-2.5 py-1.5 text-xs" onClick={() => setSelectedIds(new Set())}>ยกเลิก</Button>
-              <Button variant="danger" className="px-2.5 py-1.5 text-xs" disabled={deleting} onClick={deleteSelected}><Trash2 className="size-3.5" /> ลบที่เลือก</Button>
-            </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#f0dfa9] bg-[#fff9eb] px-4 py-2.5 text-sm">
+          <div className="flex items-center gap-2 text-[#805c18]"><BookmarkCheck className="size-4" />
+            {marker ? <span>จุดเริ่มพิมพ์ครั้งถัดไป: <strong className="font-mono">{marker.lnHalos}</strong> · LN HIS <strong className="font-mono">{marker.ln}</strong></span> : <span>ยังไม่ได้ Mark จุดเริ่มพิมพ์</span>}
           </div>
-        )}
+          {marker && <div className="flex gap-2">
+            <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => setSearch(marker.ln)}>ไปยังรายการที่ Mark</Button>
+            <Button variant="ghost" className="px-2.5 py-1 text-xs" disabled={markBusy} onClick={() => void setMark(null)}>ยกเลิก Mark</Button>
+          </div>}
+        </div>
+        {selectedIds.size > 0 && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#bfe2d9] bg-[#edf8f5] px-4 py-2.5">
+          <span className="text-sm font-bold text-[#24685e]">{selectedIds.size} รายการที่เลือกในหน้านี้</span>
+          <div className="flex flex-wrap gap-2">
+            <Button className="px-2.5 py-1.5 text-xs" disabled={loading || deleting} onClick={() => setShowPrintModal(true)}><Printer className="size-4" /> Print {selectedIds.size} ตัวอย่าง</Button>
+            <Button variant="secondary" className="px-2.5 py-1.5 text-xs" onClick={() => setSelectedIds(new Set())}>ยกเลิกการเลือก</Button>
+            {actor.role === 'Admin' && <Button variant="danger" className="px-2.5 py-1.5 text-xs" disabled={deleting || loading} onClick={deleteSelected}><Trash2 className="size-3.5" /> ลบที่เลือก</Button>}
+          </div>
+        </div>}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="bg-[#f7fafa] text-[11px] tracking-[0.08em] text-[#779097] uppercase"><tr>{actor.role === 'Admin' ? <th className="w-10 px-3 py-2.5"><input type="checkbox" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={toggleSelectAll} className="size-4" /></th> : null}<th className="px-4 py-2.5">LN</th><th className="px-3 py-2.5">LN Halos</th><th className="px-3 py-2.5">Name / HN</th><th className="px-3 py-2.5">GA</th><th className="px-3 py-2.5">Run Type</th><th className="px-3 py-2.5">Stage</th><th className="px-3 py-2.5">Result</th><th className="px-4 py-2.5"></th></tr></thead>
+            <thead className="bg-[#f7fafa] text-[11px] tracking-[0.08em] text-[#779097] uppercase"><tr><th className="w-10 px-3 py-2.5"><input type="checkbox" checked={allSelected} onChange={toggleSelectAll} aria-label="เลือกทุกตัวอย่างในหน้านี้เท่านั้น" className="size-4" /></th><th className="px-4 py-2.5">LN</th><th className="px-3 py-2.5">LN Halos</th><th className="px-3 py-2.5">Name / HN</th><th className="px-3 py-2.5">GA</th><th className="px-3 py-2.5">Run Type</th><th className="px-3 py-2.5">Stage</th><th className="px-3 py-2.5">Result</th><th className="px-4 py-2.5"></th></tr></thead>
             <tbody className="divide-y divide-[#edf2f2]">
-              {filtered.map((sample) => <tr key={sample.id} className={sample.isDayEndMarker ? 'bg-[#fff6d9] hover:bg-[#ffefbd]' : selectedIds.has(sample.id) ? 'bg-[#fff8f8] hover:bg-[#fff1f1]' : 'hover:bg-[#fbfdfd]'}>
-                {actor.role === 'Admin' ? <td className="px-3 py-3"><input type="checkbox" checked={selectedIds.has(sample.id)} onChange={() => toggleSelect(sample.id)} className="size-4" /></td> : null}
-                <td className="mono px-4 py-3 font-bold text-[#173d50]">{sample.ln}{sample.isDayEndMarker ? <span className="mt-1 flex items-center gap-1 font-sans text-[10px] font-bold text-[#9d6b0b]"><Star className="size-3 fill-current" /> ตัวอย่างสุดท้ายของวัน</span> : null}</td>
+              {filtered.map((sample) => <tr key={sample.id} className={marker?.sampleId === sample.id ? 'bg-[#fff2d3]' : selectedIds.has(sample.id) ? 'bg-[#eaf8f5]' : 'hover:bg-[#fbfdfd]'}>
+                <td className="px-3 py-3"><input type="checkbox" checked={selectedIds.has(sample.id)} onChange={() => toggleSelect(sample.id)} aria-label={'เลือก LN ' + sample.ln} className="size-4" /></td>
+                <td className="mono px-4 py-3 font-bold text-[#173d50]">{sample.ln}</td>
                 <td className="mono px-3 py-3 text-xs text-[#45636e]">{sample.lnHalos}</td>
                 <td className="px-3 py-3"><span className="block font-semibold text-[#45636e]">{sample.patientName ?? '-'}</span><span className="text-xs text-[#93a5aa]">{sample.hn ? `HN ${sample.hn}` : 'ยังไม่มีข้อมูล HIS'}</span></td>
                 <td className={`px-3 py-3 font-bold ${isGestationalAgeWarning(sample.gaWeeks) ? 'text-[#be3d49]' : 'text-[#6e858d]'}`}>{formatGestationalAge(sample.gaWeeks, sample.gaDays)}</td>
                 <td className="px-3 py-3"><RunBadge runType={sample.runType} /></td>
                 <td className="px-3 py-3"><StageBadge stage={sample.stage} /></td>
                 <td className="px-3 py-3">{sample.activeResult ? <span className="flex items-center gap-1 text-xs font-bold text-[#4f7a54]"><FileText className="size-3.5" /> PDF</span> : <span className="text-xs text-[#a0afb3]">-</span>}</td>
-                <td className="px-4 py-3 text-right"><div className="flex items-center justify-end gap-1.5">{latestDailyIds.has(sample.id) || sample.isDayEndMarker ? <button type="button" disabled={markingId !== null} onClick={() => void toggleDayMarker(sample)} aria-label={sample.isDayEndMarker ? 'ยกเลิกเครื่องหมายตัวอย่างสุดท้ายของวัน' : 'ทำเครื่องหมายตัวอย่างสุดท้ายของวัน'} title={sample.isDayEndMarker ? 'ยกเลิกเครื่องหมายตัวอย่างสุดท้ายของวัน' : 'ทำเครื่องหมายตัวอย่างสุดท้ายของวัน'} className={`rounded-lg p-1.5 transition disabled:opacity-50 ${sample.isDayEndMarker ? 'bg-[#ffe8a0] text-[#956200] hover:bg-[#ffdb79]' : 'text-[#b08533] hover:bg-[#fff2cd]'}`}><Star className={`size-4 ${sample.isDayEndMarker ? 'fill-current' : ''}`} /></button> : null}<button onClick={() => printTubeLabels([sample])} title="Print tube labels" className="rounded p-1.5 text-[#087f79] transition hover:bg-[#daf0ee]"><Printer className="size-4" /></button><Button variant="secondary" className="px-2.5 py-1.5 text-xs" onClick={() => setSelectedId(sample.id)}>เปิด</Button></div></td>
+                <td className="px-4 py-3 text-right"><div className="flex items-center justify-end gap-1.5"><button disabled={markBusy} onClick={() => void setMark(marker?.sampleId === sample.id ? null : sample.id)} aria-pressed={marker?.sampleId === sample.id} title="Mark จุดเริ่มพิมพ์" className={"inline-flex items-center gap-1 rounded px-2 py-1.5 text-xs font-bold " + (marker?.sampleId === sample.id ? "bg-[#f6d992] text-[#805817]" : "text-[#987026] hover:bg-[#ffefc8]")}>{marker?.sampleId === sample.id ? <BookmarkCheck className="size-4" /> : <BookmarkPlus className="size-4" />}{marker?.sampleId === sample.id ? "Marked" : "Mark"}</button><button onClick={() => printTubeLabels([sample])} title="Print tube labels" className="rounded p-1.5 text-[#087f79] transition hover:bg-[#daf0ee]"><Printer className="size-4" /></button><Button variant="secondary" className="px-2.5 py-1.5 text-xs" onClick={() => setSelectedId(sample.id)}>เปิด</Button></div></td>
               </tr>)}
             </tbody>
           </table>
         </div>
         {!filtered.length ? <p className="px-4 py-10 text-center text-sm text-[#91a4a9]">ไม่พบรายการที่ค้นหา</p> : null}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e0e9ea] px-4 py-3 text-sm">
+          <span className="text-[#617e85]">แสดง {total ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, total)} จาก {total} รายการ · หน้า {page}/{totalPages}</span>
+          <div className="flex gap-2">
+            <Button variant="secondary" disabled={loading || page <= 1} onClick={() => void loadPage(page - 1, search)}>ก่อนหน้า</Button>
+            <Button variant="secondary" disabled={loading || page >= totalPages} onClick={() => void loadPage(page + 1, search)}>ถัดไป</Button>
+          </div>
+        </div>
+
       </Card>
+      {showPrintModal && chosen.length > 0 && <PrintLabelsModal title="Print Labels — ทะเบียนคนไข้" patients={chosen} onClose={() => setShowPrintModal(false)} />}
       {selected ? <PatientDrawer actor={actor} sample={selected} onClose={() => setSelectedId('')} onDelete={async () => { await refresh(''); setNoticeTone('success'); setNotice('ลบตัวอย่างแล้ว · LN Halos เดิมจะไม่ถูกนำกลับมาใช้ซ้ำ') }} onRefresh={async (message) => { await refresh(selected.id); setNoticeTone('success'); setNotice(message) }} /> : null}
     </div>
   )
