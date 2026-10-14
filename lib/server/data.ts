@@ -108,6 +108,7 @@ export async function listSamples(options: { search?: string; limit?: number; of
 
 async function hydrateSamples(samples: RecordRow[]): Promise<SampleRow[]> {
   if (!samples.length) return []
+  const admin = getAdminClient()
   const sampleIds = ids(samples, 'id')
   const { data: runData, error: runError } = await admin
     .from('nipt_sample_runs')
