@@ -82,7 +82,7 @@ export function PatientsView({ actor, initialPage, initialSelectedId, initialSel
       const result = await api<{ marker: RegistryPrintMarker | null }>('/api/registry/mark', { method: 'PATCH', body: JSON.stringify({ sampleId }) })
       setRegistry((previous) => ({ ...previous, marker: result.marker }))
       setNoticeTone('success')
-      setNotice(result.marker ? 'Mark จุดเริ่มพิมพ์แล้ว (ทั้งทะเบียนมี Mark เดียว)' : 'ยกเลิก Mark แล้ว')
+      setNotice(result.marker ? 'Manual Mark จุดเริ่มพิมพ์แล้ว (ทั้งทะเบียนมี Mark เดียว)' : 'ยกเลิก Mark แล้ว')
     } catch (error) {
       setNoticeTone('danger')
       setNotice(error instanceof Error ? error.message : 'บันทึก Mark ไม่สำเร็จ')
@@ -138,7 +138,7 @@ export function PatientsView({ actor, initialPage, initialSelectedId, initialSel
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#f0dfa9] bg-[#fff9eb] px-4 py-2.5 text-sm">
           <div className="flex items-center gap-2 text-[#805c18]"><BookmarkCheck className="size-4" />
-            {marker ? <span>จุดเริ่มพิมพ์ครั้งถัดไป: <strong className="font-mono">{marker.lnHalos}</strong> · LN HIS <strong className="font-mono">{marker.ln}</strong></span> : <span>ยังไม่ได้ Mark จุดเริ่มพิมพ์</span>}
+            {marker ? <span>จุดเริ่มพิมพ์ครั้งถัดไป: <strong className="font-mono">{marker.lnHalos}</strong> · LN HIS <strong className="font-mono">{marker.ln}</strong> <span className="ml-2 rounded border border-[#e7c677] px-1.5 py-0.5 text-[11px] font-bold">{marker.source === 'AUTO' ? 'Auto Mark' : 'Manual Mark'}</span></span> : <span>ยังไม่ได้ Mark จุดเริ่มพิมพ์ · ระบบ Auto Mark ตัวอย่างแรกของวันเมื่อไม่มี Manual Mark</span>}
           </div>
           {marker && <div className="flex gap-2">
             <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => setSearch(marker.ln)}>ไปยังรายการที่ Mark</Button>
@@ -166,7 +166,7 @@ export function PatientsView({ actor, initialPage, initialSelectedId, initialSel
                 <td className="px-3 py-3"><RunBadge runType={sample.runType} /></td>
                 <td className="px-3 py-3"><StageBadge stage={sample.stage} /></td>
                 <td className="px-3 py-3">{sample.activeResult ? <span className="flex items-center gap-1 text-xs font-bold text-[#4f7a54]"><FileText className="size-3.5" /> PDF</span> : <span className="text-xs text-[#a0afb3]">-</span>}</td>
-                <td className="px-4 py-3 text-right"><div className="flex items-center justify-end gap-1.5"><button disabled={markBusy} onClick={() => void setMark(marker?.sampleId === sample.id ? null : sample.id)} aria-pressed={marker?.sampleId === sample.id} title="Mark จุดเริ่มพิมพ์" className={"inline-flex items-center gap-1 rounded px-2 py-1.5 text-xs font-bold " + (marker?.sampleId === sample.id ? "bg-[#f6d992] text-[#805817]" : "text-[#987026] hover:bg-[#ffefc8]")}>{marker?.sampleId === sample.id ? <BookmarkCheck className="size-4" /> : <BookmarkPlus className="size-4" />}{marker?.sampleId === sample.id ? "Marked" : "Mark"}</button><button onClick={() => printTubeLabels([sample])} title="Print tube labels" className="rounded p-1.5 text-[#087f79] transition hover:bg-[#daf0ee]"><Printer className="size-4" /></button><Button variant="secondary" className="px-2.5 py-1.5 text-xs" onClick={() => setSelectedId(sample.id)}>เปิด</Button></div></td>
+                <td className="px-4 py-3 text-right"><div className="flex items-center justify-end gap-1.5"><button disabled={markBusy} onClick={() => void setMark(marker?.sampleId === sample.id && marker.source === 'MANUAL' ? null : sample.id)} aria-pressed={marker?.sampleId === sample.id} title="Mark จุดเริ่มพิมพ์" className={"inline-flex items-center gap-1 rounded px-2 py-1.5 text-xs font-bold " + (marker?.sampleId === sample.id ? "bg-[#f6d992] text-[#805817]" : "text-[#987026] hover:bg-[#ffefc8]")}>{marker?.sampleId === sample.id ? <BookmarkCheck className="size-4" /> : <BookmarkPlus className="size-4" />}{marker?.sampleId === sample.id ? (marker.source === 'AUTO' ? "ตั้ง Manual" : "Marked") : "Mark"}</button><button onClick={() => printTubeLabels([sample])} title="Print tube labels" className="rounded p-1.5 text-[#087f79] transition hover:bg-[#daf0ee]"><Printer className="size-4" /></button><Button variant="secondary" className="px-2.5 py-1.5 text-xs" onClick={() => setSelectedId(sample.id)}>เปิด</Button></div></td>
               </tr>)}
             </tbody>
           </table>

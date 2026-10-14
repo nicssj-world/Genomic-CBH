@@ -174,6 +174,7 @@ export interface RegistryPrintMarker {
   sampleId: string
   ln: string
   lnHalos: string
+  source: 'AUTO' | 'MANUAL'
 }
 
 export interface RegistryPage {
@@ -187,14 +188,14 @@ export interface RegistryPage {
 export async function getRegistryPrintMarker(): Promise<RegistryPrintMarker | null> {
   const admin = getAdminClient()
   const { data, error } = await admin.from('genomic_label_print_marker')
-    .select('sample_id').eq('singleton_id', true).maybeSingle()
+    .select('sample_id,mark_source').eq('singleton_id', true).maybeSingle()
   fail(error)
   if (!data?.sample_id) return null
   const { data: sample, error: sampleError } = await admin.from('nipt_samples')
     .select('id,ln,ln_halos').eq('id', data.sample_id).maybeSingle()
   fail(sampleError)
   if (!sample) return null
-  return { sampleId: sample.id, ln: sample.ln, lnHalos: sample.ln_halos }
+  return { sampleId: sample.id, ln: sample.ln, lnHalos: sample.ln_halos, source: data.mark_source === 'AUTO' ? 'AUTO' : 'MANUAL' }
 }
 
 export async function listRegistrySamples(options: { page?: number; search?: string } = {}): Promise<RegistryPage> {
