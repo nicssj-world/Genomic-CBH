@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { AlertOctagon, ArrowRight, Barcode, ClipboardList, Database, FlaskConical, ScanLine, TestTube2 } from 'lucide-react'
-import type { DashboardData } from '@/lib/nipt/types'
+import { AlertOctagon, ArrowRight, Barcode, ClipboardList, Database, FlaskConical, ScanLine, Star, TestTube2 } from 'lucide-react'
+import type { DashboardData, SampleRow } from '@/lib/nipt/types'
+import { latestSampleIdsByBangkokDay } from '@/lib/nipt/intake-day'
 import { RUN_TYPES, STAGES, formatGestationalAge, isGestationalAgeWarning, type RunType, type SampleStage } from '@/lib/nipt/rules'
 import { api, Button, Card, Notice, PageHeader, RunBadge, Select, StageBadge } from '@/components/ui'
 
@@ -15,6 +16,7 @@ export function DashboardView({ initialData }: { initialData: DashboardData }) {
   const [stage, setStage] = useState<SampleStage | 'all'>('all')
   const [runType, setRunType] = useState<RunType | 'all'>('all')
   const [gaOnly, setGaOnly] = useState(false)
+  const [markingId, setMarkingId] = useState<string | null>(null)
   const scanRef = useRef<HTMLInputElement>(null)
   const busyRef = useRef(false)
 
@@ -55,6 +57,21 @@ export function DashboardView({ initialData }: { initialData: DashboardData }) {
     }
   }
 
+  async function toggleDayMarker(sample: SampleRow) {
+    setMarkingId(sample.id)
+    setMessage(null)
+    try {
+      const marked = !sample.isDayEndMarker
+      await api(`/api/samples/${sample.id}/day-end`, { method: 'POST', body: JSON.stringify({ marked }) })
+      await refresh()
+      setMessage({ tone: 'success', text: marked ? `ทำเครื่องหมายตัวอย่างสุดท้ายของวัน: LN ${sample.ln}` : `ยกเลิกเครื่องหมายตัวอย่างสุดท้ายของวัน: LN ${sample.ln}` })
+    } catch (error) {
+      setMessage({ tone: 'danger', text: error instanceof Error ? error.message : 'เปลี่ยนเครื่องหมายไม่สำเร็จ' })
+    } finally {
+      setMarkingId(null)
+    }
+  }
+
   async function register(event: React.FormEvent) {
     event.preventDefault()
     await doRegister(ln)
@@ -66,6 +83,8 @@ export function DashboardView({ initialData }: { initialData: DashboardData }) {
     if (gaOnly && !isGestationalAgeWarning(sample.gaWeeks)) return false
     return true
   }), [data.recentSamples, gaOnly, runType, stage])
+
+  const dailyLatestIds = useMemo(() => latestSampleIdsByBangkokDay(data.recentSamples), [data.recentSamples])
 
   const assigned = data.activeBatch?.slots.filter((slot) => slot.sampleRunId).length ?? 0
 
@@ -117,7 +136,7 @@ export function DashboardView({ initialData }: { initialData: DashboardData }) {
 
       <Card>
         <div className="flex flex-col gap-3 border-b border-[#e0e9ea] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div><h2 className="font-bold text-[#173d50]">รายการรับเข้าล่าสุด</h2><p className="mt-0.5 text-xs text-[#80959b]">ตรวจสอบ LN, LN Halos และสถานะล่าสุด</p></div>
+          <div><h2 className="font-bold text-[#173d50]">รายการรับเข้าล่าสุด</h2><p className="mt-0.5 text-xs text-[#80959b]">ตรวจสอบ LN, LN Halos และสถานะล่าสุด · ดาวสีเหลือง = ตัวอย่างสุดท้ายของวัน</p></div>
           <div className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 sm:w-auto sm:grid-cols-[auto_auto_auto]">
             <Select className="min-w-0 !w-full py-1.5 text-xs sm:!w-auto" value={stage} onChange={(event) => setStage(event.target.value as SampleStage | 'all')}>
               <option value="all">ทุกขั้นตอน</option>{STAGES.map((item) => <option key={item}>{item}</option>)}
@@ -129,10 +148,10 @@ export function DashboardView({ initialData }: { initialData: DashboardData }) {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="bg-[#f7fafa] text-[11px] tracking-[0.08em] text-[#779097] uppercase"><tr><th className="px-4 py-2.5">LN</th><th className="px-3 py-2.5">LN Halos</th><th className="px-3 py-2.5">Patient</th><th className="px-3 py-2.5">GA</th><th className="px-3 py-2.5">Run</th><th className="px-3 py-2.5">Stage</th><th className="px-4 py-2.5">Received</th></tr></thead>
+          <table className="w-full min-w-[900px] text-left text-sm">
+            <thead className="bg-[#f7fafa] text-[11px] tracking-[0.08em] text-[#779097] uppercase"><tr><th className="px-4 py-2.5">LN</th><th className="px-3 py-2.5">LN Halos</th><th className="px-3 py-2.5">Patient</th><th className="px-3 py-2.5">GA</th><th className="px-3 py-2.5">Run</th><th className="px-3 py-2.5">Stage</th><th className="px-4 py-2.5">Received</th><th className="px-3 py-2.5 text-center">สิ้นสุดวัน</th></tr></thead>
             <tbody className="divide-y divide-[#edf2f2]">
-              {recent.map((sample) => <tr key={sample.id} className="hover:bg-[#fbfdfd]"><td className="mono px-4 py-3 font-bold text-[#173d50]">{sample.ln}</td><td className="mono px-3 py-3 text-xs text-[#45636e]">{sample.lnHalos}</td><td className="px-3 py-3 text-[#58727b]">{sample.patientName ?? '-'}</td><td className={`px-3 py-3 font-bold ${isGestationalAgeWarning(sample.gaWeeks) ? 'text-[#be3d49]' : 'text-[#6e858d]'}`}>{formatGestationalAge(sample.gaWeeks, sample.gaDays)}</td><td className="px-3 py-3"><RunBadge runType={sample.runType} /></td><td className="px-3 py-3"><StageBadge stage={sample.stage} /></td><td className="px-4 py-3 text-xs text-[#81969c]">{formatDateTime(sample.importedAt)}</td></tr>)}
+              {recent.map((sample) => <tr key={sample.id} className={sample.isDayEndMarker ? 'bg-[#fff6d9] hover:bg-[#ffefbd]' : 'hover:bg-[#fbfdfd]'}><td className="mono px-4 py-3 font-bold text-[#173d50]">{sample.ln}{sample.isDayEndMarker ? <span className="mt-1 flex items-center gap-1 font-sans text-[10px] text-[#9d6b0b]"><Star className="size-3 fill-current" /> ตัวอย่างสุดท้ายของวัน</span> : null}</td><td className="mono px-3 py-3 text-xs text-[#45636e]">{sample.lnHalos}</td><td className="px-3 py-3 text-[#58727b]">{sample.patientName ?? '-'}</td><td className={`px-3 py-3 font-bold ${isGestationalAgeWarning(sample.gaWeeks) ? 'text-[#be3d49]' : 'text-[#6e858d]'}`}>{formatGestationalAge(sample.gaWeeks, sample.gaDays)}</td><td className="px-3 py-3"><RunBadge runType={sample.runType} /></td><td className="px-3 py-3"><StageBadge stage={sample.stage} /></td><td className="px-4 py-3 text-xs text-[#81969c]">{formatDateTime(sample.importedAt)}</td><td className="px-3 py-3 text-center">{dailyLatestIds.has(sample.id) || sample.isDayEndMarker ? <button type="button" disabled={markingId !== null} onClick={() => void toggleDayMarker(sample)} title={sample.isDayEndMarker ? 'ยกเลิกเครื่องหมายตัวอย่างสุดท้ายของวัน' : 'ทำเครื่องหมายตัวอย่างสุดท้ายของวัน'} aria-label={sample.isDayEndMarker ? 'ยกเลิกเครื่องหมายตัวอย่างสุดท้ายของวัน' : 'ทำเครื่องหมายตัวอย่างสุดท้ายของวัน'} className={`rounded-lg p-1.5 transition disabled:opacity-50 ${sample.isDayEndMarker ? 'bg-[#ffe8a0] text-[#956200] hover:bg-[#ffdb79]' : 'text-[#b08533] hover:bg-[#fff2cd]'}`}><Star className={`size-4 ${sample.isDayEndMarker ? 'fill-current' : ''}`} /></button> : null}</td></tr>)}
             </tbody>
           </table>
         </div>
