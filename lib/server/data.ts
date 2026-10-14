@@ -102,6 +102,14 @@ export async function listSamples(options: { search?: string; limit?: number } =
   const runMap = new Map(((runData ?? []) as RecordRow[]).map((run) => [asString(run.sample_id), run]))
   const nameMap = await getNameMap(ids(samples, 'imported_by'))
   const revisionMap = await getRevisionMap(sampleIds)
+  // Keep legacy reads operational if the additive marker migration has not been applied yet.
+  // A mark action itself must fail loudly until the migration exists.
+  const { data: markerRows, error: markerError } = await admin
+    .from('nipt_intake_day_end_markers')
+    .select('sample_id')
+    .in('sample_id', sampleIds)
+  if (markerError && !['42P01', 'PGRST205'].includes(markerError.code ?? '')) fail(markerError)
+  const markedIds = new Set((markerRows ?? []).map((marker) => marker.sample_id))
 
   return samples.flatMap((sample): SampleRow[] => {
     const run = runMap.get(asString(sample.id))
@@ -129,6 +137,7 @@ export async function listSamples(options: { search?: string; limit?: number } =
       stage: asString(run.stage) as SampleStage,
       pregnancyType,
       runSampleId: formatRunSampleId(effectiveLnHalos, runType),
+      isDayEndMarker: markedIds.has(asString(sample.id)),
       activeResult: revisionMap.get(asString(sample.id)) ?? null,
     }]
   })
@@ -144,6 +153,17 @@ export async function registerSample(ln: string, actor: Actor) {
   const { data, error } = await getAdminClient().rpc('register_nipt_sample', { p_ln: ln.trim(), p_actor: actor.id })
   fail(error)
   return data as { duplicate: boolean; sample_id: string; ln_halos: string }
+}
+
+/** Manual, audited handover marker; never changes base LN Halos or run/stage. */
+export async function setIntakeDayEndMarker(sampleId: string, marked: boolean, actor: Actor) {
+  const { data, error } = await getAdminClient().rpc('set_nipt_intake_day_end_marker', {
+    p_sample: sampleId,
+    p_actor: actor.id,
+    p_mark: marked,
+  })
+  fail(error)
+  return data as { sample_id: string; intake_date: string; marked: boolean }
 }
 
 export async function updateSample(

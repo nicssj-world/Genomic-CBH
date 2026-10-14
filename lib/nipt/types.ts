@@ -42,6 +42,8 @@ export interface SampleRow {
   stage: SampleStage
   pregnancyType: PregnancyType
   runSampleId: string
+  /** Temporary Genomic CBH-only marker, unrelated to the clinical stage. */
+  isDayEndMarker?: boolean
   activeResult?: ResultRevision | null
 }
 

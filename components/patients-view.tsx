@@ -1,10 +1,11 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { Download, FileClock, FileText, Printer, Search, Trash2, Upload, X } from 'lucide-react'
+import { Download, FileClock, FileText, Printer, Search, Star, Trash2, Upload, X } from 'lucide-react'
 import type { Actor, SampleRow } from '@/lib/nipt/types'
 import { PREGNANCY_TYPES, RUN_TYPES, STAGES, formatGestationalAge, isGestationalAgeComplete, isGestationalAgeWarning, type PregnancyType, type RunType, type SampleStage } from '@/lib/nipt/rules'
 import { printTubeLabels } from '@/lib/nipt/label-print'
+import { latestSampleIdsByBangkokDay } from '@/lib/nipt/intake-day'
 import { api, Button, Card, Field, Input, Notice, PageHeader, RunBadge, Select, StageBadge } from '@/components/ui'
 
 type Revision = {
@@ -27,6 +28,8 @@ export function PatientsView({ actor, initialSamples, initialSelectedId }: { act
   const [noticeTone, setNoticeTone] = useState<'success' | 'warning' | 'danger'>('success')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
+  const [markingId, setMarkingId] = useState<string | null>(null)
+  const latestDailyIds = useMemo(() => latestSampleIdsByBangkokDay(samples), [samples])
   const selected = samples.find((sample) => sample.id === selectedId) ?? null
   const filtered = useMemo(() => {
     const key = search.trim().toLowerCase()
@@ -45,6 +48,26 @@ export function PatientsView({ actor, initialSamples, initialSelectedId }: { act
 
   function toggleSelectAll() {
     setSelectedIds(selectedIds.size === filtered.length && filtered.length > 0 ? new Set() : new Set(filtered.map((s) => s.id)))
+  }
+
+  async function toggleDayMarker(sample: SampleRow) {
+    setMarkingId(sample.id)
+    setNotice('')
+    try {
+      const marked = !sample.isDayEndMarker
+      await api(`/api/samples/${sample.id}/day-end`, {
+        method: 'POST',
+        body: JSON.stringify({ marked }),
+      })
+      await refresh()
+      setNoticeTone('success')
+      setNotice(marked ? `ทำเครื่องหมายตัวอย่างสุดท้ายของวันสำหรับ LN ${sample.ln} แล้ว` : `ยกเลิกเครื่องหมายตัวอย่างสุดท้ายของวันสำหรับ LN ${sample.ln} แล้ว`)
+    } catch (error) {
+      setNoticeTone('danger')
+      setNotice(error instanceof Error ? error.message : 'เปลี่ยนเครื่องหมายไม่สำเร็จ')
+    } finally {
+      setMarkingId(null)
+    }
   }
 
   async function deleteSelected() {
@@ -83,7 +106,7 @@ export function PatientsView({ actor, initialSamples, initialSelectedId }: { act
       {notice ? <Notice tone={noticeTone}>{notice}</Notice> : null}
       <Card>
         <div className="flex flex-col gap-3 border-b border-[#e0e9ea] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div><h2 className="font-bold text-[#173d50]">Samples</h2><p className="mt-0.5 text-xs text-[#80959b]">{samples.length} รายการในระบบ</p></div>
+          <div><h2 className="font-bold text-[#173d50]">Samples</h2><p className="mt-0.5 text-xs text-[#80959b]">{samples.length} รายการในระบบ · ดาวสีเหลือง = ตัวอย่างสุดท้ายของวัน (ทำเครื่องหมายด้วยเจ้าหน้าที่)</p></div>
           <div className="relative w-full sm:w-80"><Search className="absolute left-3 top-2.5 size-4 text-[#8ca3a8]" /><Input value={search} onChange={(event) => setSearch(event.target.value)} className="pl-9" placeholder="ค้นหา LN, LN Halos, HN หรือชื่อ" /></div>
         </div>
         {actor.role === 'Admin' && selectedIds.size > 0 && (
@@ -99,16 +122,16 @@ export function PatientsView({ actor, initialSamples, initialSelectedId }: { act
           <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="bg-[#f7fafa] text-[11px] tracking-[0.08em] text-[#779097] uppercase"><tr>{actor.role === 'Admin' ? <th className="w-10 px-3 py-2.5"><input type="checkbox" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={toggleSelectAll} className="size-4" /></th> : null}<th className="px-4 py-2.5">LN</th><th className="px-3 py-2.5">LN Halos</th><th className="px-3 py-2.5">Name / HN</th><th className="px-3 py-2.5">GA</th><th className="px-3 py-2.5">Run Type</th><th className="px-3 py-2.5">Stage</th><th className="px-3 py-2.5">Result</th><th className="px-4 py-2.5"></th></tr></thead>
             <tbody className="divide-y divide-[#edf2f2]">
-              {filtered.map((sample) => <tr key={sample.id} className={`hover:bg-[#fbfdfd] ${selectedIds.has(sample.id) ? 'bg-[#fff8f8]' : ''}`}>
+              {filtered.map((sample) => <tr key={sample.id} className={sample.isDayEndMarker ? 'bg-[#fff6d9] hover:bg-[#ffefbd]' : selectedIds.has(sample.id) ? 'bg-[#fff8f8] hover:bg-[#fff1f1]' : 'hover:bg-[#fbfdfd]'}>
                 {actor.role === 'Admin' ? <td className="px-3 py-3"><input type="checkbox" checked={selectedIds.has(sample.id)} onChange={() => toggleSelect(sample.id)} className="size-4" /></td> : null}
-                <td className="mono px-4 py-3 font-bold text-[#173d50]">{sample.ln}</td>
+                <td className="mono px-4 py-3 font-bold text-[#173d50]">{sample.ln}{sample.isDayEndMarker ? <span className="mt-1 flex items-center gap-1 font-sans text-[10px] font-bold text-[#9d6b0b]"><Star className="size-3 fill-current" /> ตัวอย่างสุดท้ายของวัน</span> : null}</td>
                 <td className="mono px-3 py-3 text-xs text-[#45636e]">{sample.lnHalos}</td>
                 <td className="px-3 py-3"><span className="block font-semibold text-[#45636e]">{sample.patientName ?? '-'}</span><span className="text-xs text-[#93a5aa]">{sample.hn ? `HN ${sample.hn}` : 'ยังไม่มีข้อมูล HIS'}</span></td>
                 <td className={`px-3 py-3 font-bold ${isGestationalAgeWarning(sample.gaWeeks) ? 'text-[#be3d49]' : 'text-[#6e858d]'}`}>{formatGestationalAge(sample.gaWeeks, sample.gaDays)}</td>
                 <td className="px-3 py-3"><RunBadge runType={sample.runType} /></td>
                 <td className="px-3 py-3"><StageBadge stage={sample.stage} /></td>
                 <td className="px-3 py-3">{sample.activeResult ? <span className="flex items-center gap-1 text-xs font-bold text-[#4f7a54]"><FileText className="size-3.5" /> PDF</span> : <span className="text-xs text-[#a0afb3]">-</span>}</td>
-                <td className="px-4 py-3 text-right"><div className="flex items-center justify-end gap-1.5"><button onClick={() => printTubeLabels([sample])} title="Print tube labels" className="rounded p-1.5 text-[#087f79] transition hover:bg-[#daf0ee]"><Printer className="size-4" /></button><Button variant="secondary" className="px-2.5 py-1.5 text-xs" onClick={() => setSelectedId(sample.id)}>เปิด</Button></div></td>
+                <td className="px-4 py-3 text-right"><div className="flex items-center justify-end gap-1.5">{latestDailyIds.has(sample.id) || sample.isDayEndMarker ? <button type="button" disabled={markingId !== null} onClick={() => void toggleDayMarker(sample)} aria-label={sample.isDayEndMarker ? 'ยกเลิกเครื่องหมายตัวอย่างสุดท้ายของวัน' : 'ทำเครื่องหมายตัวอย่างสุดท้ายของวัน'} title={sample.isDayEndMarker ? 'ยกเลิกเครื่องหมายตัวอย่างสุดท้ายของวัน' : 'ทำเครื่องหมายตัวอย่างสุดท้ายของวัน'} className={`rounded-lg p-1.5 transition disabled:opacity-50 ${sample.isDayEndMarker ? 'bg-[#ffe8a0] text-[#956200] hover:bg-[#ffdb79]' : 'text-[#b08533] hover:bg-[#fff2cd]'}`}><Star className={`size-4 ${sample.isDayEndMarker ? 'fill-current' : ''}`} /></button> : null}<button onClick={() => printTubeLabels([sample])} title="Print tube labels" className="rounded p-1.5 text-[#087f79] transition hover:bg-[#daf0ee]"><Printer className="size-4" /></button><Button variant="secondary" className="px-2.5 py-1.5 text-xs" onClick={() => setSelectedId(sample.id)}>เปิด</Button></div></td>
               </tr>)}
             </tbody>
           </table>
