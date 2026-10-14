@@ -121,7 +121,7 @@ register a sample. Registration uses an atomic database function:
 - Duplicate registration of the same LN returns the existing record.
 - A new LN Halos sequence is generated in Bangkok time.
 - The generated sequence is not reused after a sample is deleted.
-- The daily sequence supports values from `001` to `999`.
+- The monthly sequence supports values from `001` to `999` and resets only on the first day of the next Bangkok calendar month.
 
 The Dashboard also displays operational summary information for the NIPT
 workflow.
@@ -345,9 +345,9 @@ Example structure:
 | First `YY` | Gregorian year from the Bangkok date, shortened to two digits |
 | `B` | Fixed separator |
 | Second `YYMMDD` | Gregorian date in Bangkok time |
-| `NNN` | Daily running sequence, `001-999` |
+| `NNN` | Monthly running sequence, `001-999` |
 
-The generator sequence is intentionally monotonic for the day. Deleted sample
+The generator sequence is intentionally monotonic for the calendar month. Deleted sample
 numbers remain retired.
 
 ### Run Types And Printed Suffixes
