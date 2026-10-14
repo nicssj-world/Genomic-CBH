@@ -10,6 +10,7 @@ CREATE TABLE public.nipt_intake_day_end_markers (
 );
 ALTER TABLE public.nipt_intake_day_end_markers ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.nipt_intake_day_end_markers FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.nipt_intake_day_end_markers TO service_role;
 
 CREATE OR REPLACE FUNCTION public.set_nipt_intake_day_end_marker(
   p_sample uuid, p_actor uuid, p_mark boolean
