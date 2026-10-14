@@ -28,7 +28,7 @@ describe('Genomic registry owner lock', () => {
     const registry = read('components/patients-view.tsx')
     const modal = read('components/print-labels-modal.tsx')
     const html = read('lib/nipt/label-print.ts')
-    expect(registry).toContain('setMark(marker?.sampleId === sample.id ? null : sample.id)')
+    expect(registry).toContain("setMark(marker?.sampleId === sample.id && marker.source === 'MANUAL' ? null : sample.id)")
     expect(registry).toContain('showPrintModal')
     expect(modal).toContain('LN Halos: {p.lnHalos}')
     expect(modal).toContain('LN HIS: {p.ln}')
