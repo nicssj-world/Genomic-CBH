@@ -23,7 +23,7 @@ describe('tube label printing', () => {
     expect(html.match(/class="corner-set" aria-hidden="true"/g)).toHaveLength(8)
     expect(html.match(/class="corner (?:tl|tr|bl|br)">001<\/span>/g)).toHaveLength(32)
     for (const corner of ['tl', 'tr', 'bl', 'br']) {
-      expect(html.match(new RegExp(`class="corner ${corner}">001<\\/span>`, 'g'))).toHaveLength(8)
+      expect(html.match(new RegExp(`class="corner ${corner}">001`, 'g'))).toHaveLength(8)
     }
     expect(html).toContain('font-size: 6.5pt')
     expect(html).toContain('.left .corner.tr, .left .corner.br { right: 1.2mm; }')
