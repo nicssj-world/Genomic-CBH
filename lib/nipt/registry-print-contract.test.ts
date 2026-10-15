@@ -34,7 +34,7 @@ describe('Genomic registry owner lock', () => {
     expect(modal).toContain('LN HIS: {p.ln}')
     expect(modal).toContain('printTubeLabels(selectedPatients)')
     expect(modal).not.toContain('setMark(')
-    expect(html).toContain('@page { size: 60mm 20mm; margin: 0; }')
+    expect(html).toContain('@page { size: 50mm 20mm; margin: 0; }')
     expect(html).toContain('sticker(code, code, ln, name, sequence)')
     expect(html).toContain('class="corner-set"')
   })

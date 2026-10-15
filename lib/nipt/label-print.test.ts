@@ -3,7 +3,7 @@ import { buildTubeLabelsHtml } from './label-print'
 
 const sample = { ln: 'LN2400123456', lnHalos: '26B261012001', patientName: null }
 
-describe('tube label printing', () => {
+describe('tube label printing — 50 × 20 mm stock', () => {
   it('prints LN under LN Halos on all eight halves, preserving four stickers and suffixes', () => {
     const html = buildTubeLabelsHtml([sample])
     expect(html.match(/class="sticker"/g)).toHaveLength(4)
@@ -13,8 +13,13 @@ describe('tube label printing', () => {
     expect(html).toContain('26B261012001-2')
     expect(html).toContain('26B261012001-3')
     expect(html).toMatch(/class="ln-halos">26B261012001-2<\/div>\s*<div class="patient-ln">LN: LN2400123456<\/div>/)
-    expect(html).toContain('@page { size: 60mm 20mm; margin: 0; }')
-    expect(html).toContain('width: 30mm; height: 20mm')
+    expect(html).toContain('@page { size: 50mm 20mm; margin: 0; }')
+    expect(html).toContain('width: 25mm; height: 20mm')
+    expect(html).not.toContain('60mm 20mm')
+    expect(html).toContain('min-width: 0; flex: 0 0 25mm')
+    expect(html).toContain('padding: 1.2mm 0.8mm 1.2mm 2.5mm')
+    expect(html).toContain('padding-left: 2.5mm; padding-right: 0.8mm')
+
   })
 
 
@@ -28,8 +33,8 @@ describe('tube label printing', () => {
     expect(html).toContain('font-size: 6.5pt')
     expect(html).toContain('.left .corner.tr, .left .corner.br { right: 1.2mm; }')
     expect(html).toContain('.right .corner.tl, .right .corner.bl { left: 1.2mm; }')
-    expect(html).toContain('@page { size: 60mm 20mm; margin: 0; }')
-    expect(html).toContain('width: 30mm; height: 20mm')
+    expect(html).toContain('@page { size: 50mm 20mm; margin: 0; }')
+    expect(html).toContain('width: 25mm; height: 20mm')
     expect(html).toContain('.ln-halos { font-size: 7pt;')
     expect(html).toContain('.patient-ln { font-size: 6pt;')
   })
