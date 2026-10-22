@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildRegistryLnWorkbook } from '@/lib/nipt/registry-xlsx'
+import { buildRegistryLnWorkbook } from './registry-xlsx'
 
 function storedFiles(zip: Buffer) {
   const result = new Map<string, string>()
