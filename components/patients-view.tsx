@@ -32,6 +32,7 @@ export function PatientsView({ actor, initialPage, initialSelectedId, initialSel
   const [noticeTone, setNoticeTone] = useState<'success' | 'warning' | 'danger'>('success')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [markBusy, setMarkBusy] = useState(false)
   const [loading, setLoading] = useState(false)
   const [showPrintModal, setShowPrintModal] = useState(false)
@@ -97,6 +98,36 @@ export function PatientsView({ actor, initialPage, initialSelectedId, initialSel
     setSelectedIds(allSelected ? new Set() : new Set(filtered.map((s) => s.id)))
   }
 
+  async function exportExcel() {
+    if (exporting) return
+    setExporting(true)
+    setNotice('')
+    try {
+      const response = await fetch('/api/registry/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ search }),
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: string } | null
+        throw new Error(payload?.error ?? 'Export Excel ไม่สำเร็จ')
+      }
+      const url = URL.createObjectURL(await response.blob())
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = 'genomic-cbh-ln-mapping.xlsx'
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (error) {
+      setNoticeTone('danger')
+      setNotice(error instanceof Error ? error.message : 'Export Excel ไม่สำเร็จ')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   async function deleteSelected() {
     const picked = samples.filter((sample) => selectedIds.has(sample.id))
     if (!picked.length) return
@@ -134,7 +165,7 @@ export function PatientsView({ actor, initialPage, initialSelectedId, initialSel
       <Card>
         <div className="flex flex-col gap-3 border-b border-[#e0e9ea] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div><h2 className="font-bold text-[#173d50]">Samples</h2><p className="mt-0.5 text-xs text-[#80959b]">{total} รายการในทะเบียน · 50 รายการต่อหน้า</p></div>
-          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto"><div className="relative w-full sm:w-80"><Search className="absolute left-3 top-2.5 size-4 text-[#8ca3a8]" /><Input value={search} onChange={(event) => setSearch(event.target.value)} className="pl-9" placeholder="ค้นหาทั้งทะเบียน LN, LN Halos, HN หรือชื่อ" /></div><Button variant="secondary" disabled={loading} onClick={() => void loadPage(page, search)}><RefreshCcw className="size-4" /> รีเฟรช</Button></div>
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto"><div className="relative w-full sm:w-80"><Search className="absolute left-3 top-2.5 size-4 text-[#8ca3a8]" /><Input value={search} onChange={(event) => setSearch(event.target.value)} className="pl-9" placeholder="ค้นหาทั้งทะเบียน LN, LN Halos, HN หรือชื่อ" /></div><Button variant="secondary" disabled={loading} onClick={() => void loadPage(page, search)}><RefreshCcw className="size-4" /> รีเฟรช</Button><Button variant="secondary" disabled={exporting} onClick={() => void exportExcel()}><Download className="size-4" /> {exporting ? "กำลัง Export…" : "Export Excel"}</Button></div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#f0dfa9] bg-[#fff9eb] px-4 py-2.5 text-sm">
           <div className="flex items-center gap-2 text-[#805c18]"><BookmarkCheck className="size-4" />
