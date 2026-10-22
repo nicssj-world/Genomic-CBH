@@ -212,6 +212,31 @@ export async function listRegistrySamples(options: { page?: number; search?: str
   return { samples, total, page, pageSize, marker }
 }
 
+/** Excel export uses the same search and displayed LN Halos as the registry, without 50-row pagination. */
+export async function listRegistryLnPairs(searchInput?: string): Promise<Array<{ ln: string; lnHalos: string }>> {
+  const search = normalizedSampleSearch(searchInput)
+  const pageSize = 500
+  const rows: Array<{ ln: string; lnHalos: string }> = []
+  for (let offset = 0; ; offset += pageSize) {
+    let query = getAdminClient().from('nipt_samples')
+      .select('ln,ln_halos,pregnancy_type')
+      .order('imported_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + pageSize - 1)
+    if (search) query = query.or(sampleSearchFilter(search))
+    const { data, error } = await query
+    fail(error)
+    for (const sample of data ?? []) {
+      rows.push({
+        ln: sample.ln,
+        lnHalos: sample.pregnancy_type === 'Twin' ? sample.ln_halos + 'D' : sample.ln_halos,
+      })
+    }
+    if (!data || data.length < pageSize) break
+  }
+  return rows
+}
+
 export async function setRegistryPrintMarker(sampleId: string | null, actor: Actor): Promise<RegistryPrintMarker | null> {
   const { error } = await getAdminClient().rpc('set_genomic_label_print_marker', {
     p_sample: sampleId,
